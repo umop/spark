@@ -222,6 +222,14 @@ class TreeView implements ListViewDelegate {
     setNodeExpanded(nodeUID, !isNodeExpanded(nodeUID), animated: animated);
   }
 
+  void scrollIntoNode(String nodeUID, [ScrollAlignment align]) {
+    TreeViewRow row = _rowsMap[nodeUID];
+
+    if (row != null) {
+      _listView.scrollIntoRow(row.rowIndex, align);
+    }
+  }
+
   List<String> get selection => _rowIndexesToNodeUIDs(_listView.selection);
 
   set selection(List<String> selection) {
@@ -469,5 +477,13 @@ class TreeView implements ListViewDelegate {
    */
   TreeViewDragImage privateDragImage(MouseEvent event) {
     return _delegate.treeViewDragImage(this, selection, event);
+  }
+
+  /**
+   * This method will focus the tree view. The key input will be handled by
+   * the tree view once the list view has the focus.
+   */
+  void focus() {
+    _listView.focus();
   }
 }

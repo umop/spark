@@ -26,7 +26,7 @@ Process chromeProcess;
 int exitCode;
 Directory tempDir;
 
-final int TEST_TIMEOUT = 10;
+final int TEST_TIMEOUT = 30;
 final int CHROME_SHUTDOWN_TIMEOUT = 1;
 final int EXIT_PROCESS_TIMEOUT = 1;
 
@@ -53,15 +53,17 @@ void main([List<String> args = const []]) {
   }
 
   if (results['chrome'] || results['chrome-stable']) {
-    appPath = 'app';
-    //appPath = 'build/deploy-test-out/web';
-    browserPath = _chromeStablePath();
+    //appPath = 'app';
+    appPath = 'build/deploy-out/web';
+    //browserPath = _chromeStablePath();
+    browserPath = _dartiumPath();
   }
 
   if (results['chrome-dev']) {
-    appPath = 'app';
-    //appPath = 'build/deploy-test-out/web';
-    browserPath = _chromeDevPath();
+    //appPath = 'app';
+    appPath = 'build/deploy-out/web';
+    //browserPath = _chromeDevPath();
+    browserPath = _dartiumPath();
   }
 
 //  if (results['appPath'] != null) {
@@ -81,21 +83,27 @@ void main([List<String> args = const []]) {
   TestListener.create().then((TestListener listener) {
     testListener = listener;
 
-    runApp(browserPath, appPath);
+    runApp(browserPath, appPath, verbose: results['verbose']);
   }).catchError(_fatalError);
 }
 
-void runApp(String browserPath, String appPath) {
+void runApp(String browserPath, String appPath, {bool verbose: false}) {
   tempDir = Directory.systemTemp.createTempSync('userDataDir-');
 
   String path = new Directory(appPath).absolute.path;
 
   List<String> args = [
+      '--enable-experimental-web-platform-features',
+      '--enable-html-imports',
       '--no-default-browser-check',
       '--no-first-run',
       '--user-data-dir=${tempDir.path}',
       '--load-and-launch-app=${path}'
   ];
+
+  if (verbose) {
+    args.addAll(['--enable-logging=stderr', '--v=1']);
+  }
 
   if (Platform.isMacOS) {
     // TODO: does this work on OSes other then mac?
@@ -108,6 +116,13 @@ void runApp(String browserPath, String appPath) {
   Process.start(browserPath, args, workingDirectory: appPath)
     .then((Process process) {
       chromeProcess = process;
+
+      chromeProcess.stdout.transform(new Utf8Decoder())
+                          .transform(new LineSplitter())
+                          .listen((String line) => print(line));
+      chromeProcess.stderr.transform(new Utf8Decoder())
+                          .transform(new LineSplitter())
+                          .listen((String line) => print(line));
 
       chromeProcess.exitCode.then((int exitCode) {
         log("Chrome process finished [${exitCode}]");
@@ -126,9 +141,14 @@ ArgParser _createArgsParser() {
   parser.addFlag('chrome',
       help: 'an alias to --chrome-stable', negatable: false);
   parser.addFlag('chrome-stable',
-      help: 'run in chrome stable, test the app in build/deploy-test-out/web/', negatable: false);
+      help: 'run in chrome stable, test the app in build/deploy-out/web/',
+      negatable: false);
   parser.addFlag('chrome-dev',
-      help: 'run in chrome dev, test the app in build/deploy-test-out/web/', negatable: false);
+      help: 'run in chrome dev, test the app in build/deploy-out/web/',
+      negatable: false);
+  parser.addFlag('verbose',
+      help: 'show more logs when running unit tests in chrome',
+      negatable: false);
 
 //  parser.addOption('appPath', help: 'the application path to run');
 //  parser.addOption('browserPath', help: 'the path to chrome');

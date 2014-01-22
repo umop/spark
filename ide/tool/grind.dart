@@ -40,6 +40,7 @@ void main([List<String> args]) {
   defineTask('docs', taskFunction: docs, depends : ['setup']);
   defineTask('stats', taskFunction: stats);
   defineTask('archive', taskFunction: archive, depends : ['mode-notest', 'deploy']);
+  defineTask('createSdk', taskFunction: createSdk);
 
   // For now, we won't be building the webstore version from Windows.
   if (!Platform.isWindows) {
@@ -68,8 +69,6 @@ void setup(GrinderContext context) {
   PubTools pub = new PubTools();
   pub.get(context);
 
-  _populateSdk(context);
-
   // copy from ./packages to ./app/packages
   copyDirectory(getDir('packages'), getDir('app/packages'), context);
 
@@ -96,10 +95,12 @@ void deploy(GrinderContext context) {
 
   _polymerDeploy(context, sourceDir, destDir);
 
-  _dart2jsCompile(context, joinDir(destDir, ['web']),
+  _dart2jsCompile(
+      context, joinDir(destDir, ['web']),
       'spark_polymer.html_bootstrap.dart', true);
-  _dart2jsCompile(context, joinDir(destDir, ['web']),
-      'spark_polymer_ui.html_bootstrap.dart', true);
+  _runCommandSync(
+      context,
+      'patch ${destDir.path}/web/packages/shadow_dom/shadow_dom.debug.js tool/shadow_dom.patch');
 }
 
 // Creates a release build to be uploaded to Chrome Web Store.
@@ -235,6 +236,32 @@ void stats(GrinderContext context) {
 }
 
 /**
+ * Create the 'app/sdk/dart-sdk.bin' file from the current Dart SDK.
+ */
+void createSdk(GrinderContext context) {
+  Directory srcSdkDir = sdkDir;
+  Directory destSdkDir = new Directory('app/sdk');
+
+  destSdkDir.createSync();
+
+  File versionFile = joinFile(srcSdkDir, ['version']);
+  File destArchiveFile = joinFile(destSdkDir, ['dart-sdk.bin']);
+
+  // copy files over
+  context.log('copying SDK');
+  copyDirectory(joinDir(srcSdkDir, ['lib']), joinDir(destSdkDir, ['lib']), context);
+
+  // Get rid of some big directories we don't use.
+  _delete('app/sdk/lib/_internal/compiler', context);
+  _delete('app/sdk/lib/_internal/dartdoc', context);
+
+  context.log('creating SDK archive');
+  _createSdkArchive(versionFile, joinDir(destSdkDir, ['lib']), destArchiveFile);
+
+  deleteEntity(joinDir(destSdkDir, ['lib']), context);
+}
+
+/**
  * Delete all generated artifacts.
  */
 void clean(GrinderContext context) {
@@ -299,10 +326,12 @@ void _polymerDeploy(GrinderContext context, Directory sourceDir, Directory destD
   copyDirectory(getDir('../widgets'), joinDir(BUILD_DIR, ['widgets']), context);
 
   // Copy the app directory to target/web.
-  copyFile(new File('pubspec.yaml'), sourceDir);
-  copyFile(new File('pubspec.lock'), sourceDir);
-  copyDirectory(new Directory('app'), joinDir(sourceDir, ['web']), context);
+  copyFile(getFile('pubspec.yaml'), sourceDir);
+  copyFile(getFile('pubspec.lock'), sourceDir);
+  copyDirectory(getDir('app'), joinDir(sourceDir, ['web']), context);
+
   deleteEntity(joinFile(destDir, ['web', 'spark_polymer.dart.precompiled.js']), context);
+
   deleteEntity(getDir('${sourceDir.path}/web/packages'), context);
   final Link link = new Link(sourceDir.path + '/packages');
   link.createSync('../../packages');
@@ -310,8 +339,7 @@ void _polymerDeploy(GrinderContext context, Directory sourceDir, Directory destD
   runDartScript(context, 'packages/polymer/deploy.dart',
       arguments: ['--out', '../../${destDir.path}'],
       packageRoot: 'packages',
-      workingDirectory: sourceDir.path,
-      vmNewGenHeapMB: 128, vmOldGenHeapMB: 4096);
+      workingDirectory: sourceDir.path);
 }
 
 void _dart2jsCompile(GrinderContext context, Directory target, String filePath,
@@ -340,7 +368,10 @@ void _dart2jsCompile(GrinderContext context, Directory target, String filePath,
         context);
   }
 
-  _printSize(context,  joinFile(target, ['${filePath}.precompiled.js']));
+  final Link link = new Link(joinFile(target, ['${filePath}.js']).path);
+  link.createSync('./${filePath}.precompiled.js');
+
+  _printSize(context, joinFile(target, ['${filePath}.precompiled.js']));
 }
 
 /**
@@ -489,49 +520,6 @@ void _removePackagesLinks(GrinderContext context, Directory target) {
       _removePackagesLinks(context, entity);
     }
   });
-}
-
-/**
- * Populate the 'app/sdk' directory from the current Dart SDK.
- */
-void _populateSdk(GrinderContext context) {
-  Directory srcSdkDir = sdkDir;
-  Directory destSdkDir = new Directory('app/sdk');
-
-  destSdkDir.createSync();
-
-  File versionFile = joinFile(srcSdkDir, ['version']);
-  File destArchiveFile = joinFile(destSdkDir, ['dart-sdk.bin']);
-
-  FileSet srcVer = new FileSet.fromFile(versionFile);
-  FileSet destArchive = new FileSet.fromFile(destArchiveFile);
-
-  Directory compilerDir = new Directory('packages/compiler');
-
-  // Check the timestamp of the SDK archive to see if things are up-to-date.
-  if (!destArchive.upToDate(srcVer) || !compilerDir.existsSync()) {
-    // copy files over
-    context.log('copying SDK');
-    copyDirectory(joinDir(srcSdkDir, ['lib']), joinDir(destSdkDir, ['lib']), context);
-
-    // Create a synthetic package:compiler package in the packages directory.
-    // TODO(devoncarew): this would be much better as a standard pub package
-    compilerDir.createSync();
-
-    _delete('packages/compiler/compiler', context);
-    _delete('packages/compiler/lib', context);
-    _delete('app/sdk/lib/_internal/compiler/samples', context);
-    copyDirectory(getDir('app/sdk/lib/_internal/compiler'), getDir('packages/compiler/compiler'), context);
-    _delete('app/sdk/lib/_internal/compiler', context);
-    copyFile(getFile('app/sdk/lib/_internal/libraries.dart'), getDir('packages/compiler'), context);
-    _delete('app/sdk/lib/_internal/pub', context);
-    _delete('app/sdk/lib/_internal/dartdoc', context);
-
-    context.log('creating SDK archive');
-    _createSdkArchive(versionFile, joinDir(destSdkDir, ['lib']), destArchiveFile);
-
-    deleteEntity(joinDir(destSdkDir, ['lib']), context);
-  }
 }
 
 /**

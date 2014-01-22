@@ -9,19 +9,21 @@ import 'dart:async';
 
 import 'package:polymer/polymer.dart';
 
-import '../common/widget.dart';
+import '../common/spark_widget.dart';
 
 typedef void SplitterUpdateFunction(int position);
 
 /// Implements the spark-splitter custom Polymer element.
 @CustomTag('spark-splitter')
-class SparkSplitter extends Widget {
+class SparkSplitter extends SparkWidget {
   /// Possible values are "left", "right", "up" and "down".
   /// The direction specifies:
   /// 1) whether the split is horizontal or vertical;
   /// 2) which sibling will be continuously auto-resized when the splitter is
   ///    dragged.
   @published String direction = 'left';
+  /// The split bar has a background image.
+  @published bool handle = false;
   /// Locks the split bar so it can't be dragged.
   @published bool locked = false;
   /// Get notified of position changes.
@@ -94,6 +96,19 @@ class SparkSplitter extends Widget {
     _target =
         _isTargetNextSibling ? nextElementSibling : previousElementSibling;
     classes.toggle('horizontal', _isHorizontal);
+    if (handle) {
+      _addBackgroundHandle();
+    }
+  }
+
+  void _addBackgroundHandle() {
+    if (_isHorizontal) {
+      classes.add('horizontal-handle');
+      classes.remove('vertical-handle');
+    } else {
+      classes.remove('horizontal-handle');
+      classes.add('vertical-handle');
+    }
   }
 
   /// Cache the current size of the target.

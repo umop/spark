@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'dart:core';
 import 'dart:typed_data';
 
-import 'package:chrome_gen/src/common_exp.dart' as chrome;
+import 'package:chrome/src/common_exp.dart' as chrome;
 
 import 'object_utils.dart';
 
@@ -16,7 +16,7 @@ import 'object_utils.dart';
  * Encapsulates a Gitobject
  *
  * TODO(grv): Add unittests.
- **/
+ */
 abstract class GitObject {
 
   /**
@@ -222,6 +222,20 @@ class CommitObject extends GitObject {
     str += _message;
     return str;
   }
+
+  /**
+   * Returns the commit object as a map for easy advanced formatting instead
+   * of toString().
+   */
+  Map<String, String> toMap() {
+    return {
+            "commit": _sha,
+            "author_name": author.name,
+            "author_email": author.email,
+            "date": author.date.toString(),
+            "message": _message
+           };
+  }
 }
 
 /**
@@ -253,7 +267,7 @@ class LooseObject {
     String header;
     int i;
     if (buf is chrome.ArrayBuffer) {
-     Uint8List data = new Uint8List.fromList(buf);
+     Uint8List data = new Uint8List.fromList(buf.getBytes());
       List<String> headChars = [];
       for (i = 0; i < data.length; ++i) {
         if (data[i] != 0)
@@ -261,15 +275,14 @@ class LooseObject {
         else
           break;
       }
-      header = headChars.join(' ');
+      header = headChars.join();
 
       this.data = data.sublist(i + 1, data.length);
     } else {
-      String data = buf;
-      i = data.indexOf(new String.fromCharCode(0));
-      header = data.substring(0, i);
+      i = buf.indexOf(new String.fromCharCode(0));
+      header = buf.substring(0, i);
       // move past null terminator but keep zlib header
-      this.data = data.substring(i + 1, data.length);
+      this.data = buf.substring(i + 1, buf.length);
     }
     List<String> parts = header.split(' ');
     this._type = parts[0];

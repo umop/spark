@@ -7,7 +7,7 @@ library spark.tests;
 import 'dart:async';
 import 'dart:html';
 
-import 'package:chrome_gen/chrome_app.dart' as chrome;
+import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:logging/logging.dart';
 import 'package:unittest/unittest.dart' as unittest;
 
@@ -122,7 +122,7 @@ class _TestJob extends Job {
   final TestDriver testDriver;
   final Completer<bool> testCompleter;
 
-  _TestJob(this.testDriver, this.testCompleter) : super("Running Tests…");
+  _TestJob(this.testDriver, this.testCompleter) : super("Running tests…");
 
   Future<Job> run(ProgressMonitor monitor) {
     // TODO: Count tests for future progress bar.

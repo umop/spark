@@ -9,20 +9,20 @@
  * See also:
  *
  * * [developer.chrome.com/apps/socket.html](http://developer.chrome.com/apps/socket.html)
- * * [dart-gde.github.io/chrome_gen.dart/app/chrome.socket.html](http://dart-gde.github.io/chrome_gen.dart/app/chrome.socket.html)
+ * * [dart-gde.github.io/chrome.dart/app/chrome.socket.html](http://dart-gde.github.io/chrome.dart/app/chrome.socket.html)
  */
 library spark.tcp;
 
 import 'dart:async';
 
-import 'package:chrome_gen/chrome_app.dart' as chrome;
-export 'package:chrome_gen/chrome_app.dart' show SocketInfo;
+import 'package:chrome/chrome_app.dart' as chrome;
+export 'package:chrome/chrome_app.dart' show SocketInfo;
 
 const LOCAL_HOST = '127.0.0.1';
 
 // TODO(devoncarew): these classes are fairly generic; explore contributing them
-// to package:chrome_gen, or to a new utility library for chrome functionalty
-// built on chrome_gen? chrome_util?
+// to package:chrome, or to a new utility library for chrome functionalty
+// built on chrome? chrome_util?
 
 /**
  * An [Exception] implementation for socket errors.
@@ -61,7 +61,6 @@ class TcpClient {
       return chrome.socket.connect(socketId, host, port).then((int result) {
         if (result < 0) {
           chrome.socket.destroy(socketId);
-
           if (throwOnError) {
             throw new SocketException('unable to connect to ${host} ${port}: ${result}');
           } else {
@@ -103,7 +102,10 @@ class TcpClient {
   void writeString(String str) => sink.add(str.codeUnits);
 
   void dispose() {
-    chrome.socket.disconnect(_socketId);
+    _sink.lastWriteComplete.then((_) {
+      chrome.socket.disconnect(_socketId);
+      chrome.socket.destroy(_socketId);
+    });
   }
 
   void _pollIncoming() {
@@ -196,13 +198,13 @@ class TcpServer {
 class _SocketEventSink implements EventSink<List<int>> {
   TcpClient tcpClient;
 
+  Future _lastWrite = new Future.value(null);
+
   _SocketEventSink(this.tcpClient);
 
   void add(List<int> event) {
-    // TODO(devoncarew): do we need to do anything with the returned
-    // Future<SocketWriteInfo>? Send it to the read stream controller?
 
-    chrome.socket.write(
+    _lastWrite = chrome.socket.write(
         tcpClient._socketId,
         new chrome.ArrayBuffer.fromBytes(event));
   }
@@ -211,6 +213,11 @@ class _SocketEventSink implements EventSink<List<int>> {
     // TODO(devoncarew): implement this method
 
   }
+
+  /**
+   * Returns a Future that completes when the most recent write finishes.
+   */
+  Future get lastWriteComplete => _lastWrite;
 
   void close() {
     tcpClient.dispose();

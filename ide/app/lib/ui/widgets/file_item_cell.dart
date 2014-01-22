@@ -11,6 +11,7 @@ library spark.ui.widgets.fileitem_cell;
 import 'dart:html';
 
 import 'listview_cell.dart';
+import '../../scm.dart' as scm;
 import '../../workspace.dart';
 
 class FileItemCell implements ListViewCell {
@@ -24,7 +25,15 @@ class FileItemCell implements ListViewCell {
         (querySelector('#fileview-filename-template') as TemplateElement).content;
     DocumentFragment templateClone = template.clone(true);
     _element = templateClone.querySelector('.fileview-filename-container');
-    _element.querySelector('.filename').text = _resource.name;
+    if (_resource is Project) {
+      if (scm.isUnderScm(_resource)) {
+        updateFileInfo();
+
+        // TODO: Listen for updates to the branch name.
+        scm.getScmOperationsFor(_resource).getBranchName().then(updateFileInfo);
+      }
+    }
+    fileNameElement.innerHtml = _resource.name;
     acceptDrop = false;
     updateFileStatus();
   }
@@ -37,9 +46,26 @@ class FileItemCell implements ListViewCell {
 
   set highlighted(bool value) => _highlighted = value;
 
+  Element get fileNameElement => _element.querySelector('.nameField');
+
+  Element get fileInfoElement => _element.querySelector('.infoField');
+
   Element get fileStatusElement => _element.querySelector('.fileStatus');
 
   Element get gitStatusElement => _element.querySelector('.gitStatus');
+
+  void updateFileInfo([String branchName]) {
+    String decoration;
+    final String repoIcon = '<i class="fa fa-code-fork"></i>';
+
+    if (branchName == null) {
+      decoration = '${repoIcon}';
+    } else {
+      decoration = '${repoIcon} [${branchName}]';
+    }
+
+    fileInfoElement.innerHtml = decoration;
+  }
 
   void updateFileStatus() {
     Element element = fileStatusElement;

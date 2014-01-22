@@ -7,7 +7,7 @@ library git.commands.commit;
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:chrome_gen/chrome_app.dart' as chrome;
+import 'package:chrome/chrome_app.dart' as chrome;
 
 import '../file_operations.dart';
 import '../object.dart';
@@ -28,27 +28,28 @@ class Commit {
   static Future<String> walkFiles(chrome.DirectoryEntry root,
       ObjectStore store) {
 
-    return FileOps.listFiles(root).then((List<chrome.DirectoryEntry> entries) {
+    return FileOps.listFiles(root).then((List<chrome.ChromeFileEntry> entries) {
       if (entries.isEmpty) {
         return null;
       }
 
       List<TreeEntry> treeEntries = [];
 
-      return Future.forEach(entries, (chrome.DirectoryEntry entry) {
+      return Future.forEach(entries, (chrome.ChromeFileEntry entry) {
         if (entry.name == '.git') {
           return null;
         }
 
         if (entry.isDirectory) {
-          return walkFiles(entry, store).then((String sha) {
+          return walkFiles(entry as chrome.DirectoryEntry, store).then(
+              (String sha) {
             if (sha != null) {
               treeEntries.add(new TreeEntry(entry.name, shaToBytes(sha),
                   false));
             }
           });
         } else {
-          return (entry as chrome.ChromeFileEntry).readBytes().then(
+          return entry.readBytes().then(
               (chrome.ArrayBuffer buf) {
                 return store.writeRawObject('blob', new Uint8List.fromList(
                     buf.getBytes()));
@@ -126,7 +127,7 @@ class Commit {
         dateString += offsetStr;
         StringBuffer commitContent = new StringBuffer();
         commitContent.write('tree ${sha}\n');
-        if (parent != null && parent.length) {
+        if (parent != null && parent.length > 0) {
           commitContent.write('parent ${parent}');
           if (parent[parent.length -1] != '\n') {
             commitContent.write('\n');

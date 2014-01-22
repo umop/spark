@@ -8,11 +8,11 @@ import 'dart:async';
 import 'dart:html';
 import 'package:polymer/polymer.dart';
 
-import '../common/widget.dart';
+import '../common/spark_widget.dart';
 
 // Ported from Polymer Javascript to Dart code.
 @CustomTag("spark-overlay")
-class SparkOverlay extends Widget {
+class SparkOverlay extends SparkWidget {
   // TODO(sorvell): need keyhelper component.
   static final int ESCAPE_KEY = 27;
 
@@ -76,12 +76,25 @@ class SparkOverlay extends Widget {
     _resizeHandler = resizeHandler;
   }
 
+  bool _opened = false;
+
   /**
    * Set opened to true to show an overlay and to false to hide it.
    * A spark-overlay may be made intially opened by setting its opened
    * attribute.
    */
-  @published bool opened = false;
+  @published bool get opened => _opened;
+
+  @published set opened(bool val) {
+    if (_opened != val) {
+      _opened = val;
+      // TODO(ussuri): Getter/setter were needed to fix the Menu and Modal not
+      // working in the deployed code. With a simple `@published bool opened`,
+      // writes to it via data binding or direct assignment elsewhere here
+      // were not detected (didn't invoke [openedChanged]).
+      openedChanged();
+    }
+  }
 
   /**
    * By default an overlay will close automatically if the user taps outside
@@ -99,6 +112,7 @@ class SparkOverlay extends Widget {
     if (tabIndex == null) {
       tabIndex = -1;
     }
+    // TODO(ussuri): 'touch-action' is not used anywhere else - mistake?
     attributes['touch-action'] = 'none';
   }
 
@@ -216,7 +230,7 @@ class SparkOverlay extends Widget {
   // scrim.
   void captureHandler(MouseEvent e) {
     // TODO(terry): Hack to work around lightdom or event.path not yet working.
-    if (!autoCloseDisabled && !pointInOverlay(this, e.client)) {
+    if (!autoCloseDisabled && !isPointInOverlay(e.client)) {
       // TODO(terry): How to cancel the event e.cancelable = true;
       e.stopImmediatePropagation();
       e.preventDefault();
@@ -225,8 +239,8 @@ class SparkOverlay extends Widget {
     }
   }
 
-  bool pointInOverlay(SparkOverlay overlay, Point xyGlobal) {
-    return overlay.offset.containsPoint(xyGlobal);
+  bool isPointInOverlay(Point xyGlobal) {
+    return super.getBoundingClientRect().containsPoint(xyGlobal);
   }
 
   void keydownHandler(KeyboardEvent e) {

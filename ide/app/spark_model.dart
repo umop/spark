@@ -7,8 +7,8 @@ library spark.model;
 import 'lib/ace.dart';
 import 'lib/actions.dart';
 import 'lib/app.dart';
-import 'lib/editorarea.dart';
 import 'lib/editors.dart';
+import 'lib/editor_area.dart';
 import 'lib/preferences.dart' as preferences;
 import 'lib/workspace.dart' as ws;
 
@@ -24,7 +24,7 @@ abstract class SparkModel extends Application {
 
   bool get developerMode;
 
-  AceContainer get aceContainer;
+  AceManager get aceManager;
   ThemeManager get aceThemeManager;
   KeyBindingManager get aceKeysManager;
   ws.Workspace get workspace;
@@ -35,6 +35,9 @@ abstract class SparkModel extends Application {
   preferences.PreferenceStore get syncPrefs;
 
   ActionManager get actionManager;
+
+  void showSuccessMessage(String message);
+  void showErrorMessage(String title, String message);
 
   void onSplitViewUpdate(int position);
 }

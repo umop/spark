@@ -6,12 +6,13 @@ library spark;
 
 import 'dart:async';
 import 'dart:convert' show JSON;
-import 'dart:html';
+import 'dart:html' hide File;
 
 import 'package:bootjack/bootjack.dart' as bootjack;
-import 'package:chrome_gen/chrome_app.dart' as chrome;
-import 'package:logging/logging.dart';
+import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:dquery/dquery.dart';
+import 'package:logging/logging.dart';
+import 'packages/spark_widgets/spark_status/spark_status.dart';
 
 import 'lib/ace.dart';
 import 'lib/actions.dart';
@@ -19,17 +20,13 @@ import 'lib/analytics.dart' as analytics;
 import 'lib/app.dart';
 import 'lib/builder.dart';
 import 'lib/dart/dart_builder.dart';
-import 'lib/editorarea.dart';
 import 'lib/editors.dart';
+import 'lib/editor_area.dart';
 import 'lib/event_bus.dart';
-import 'lib/git/commands/branch.dart';
-import 'lib/git/commands/checkout.dart';
-import 'lib/git/commands/clone.dart';
-import 'lib/git/git.dart';
-import 'lib/git/objectstore.dart';
-import 'lib/git/options.dart';
 import 'lib/jobs.dart';
+import 'lib/launch.dart';
 import 'lib/preferences.dart' as preferences;
+import 'lib/scm.dart' as scm;
 import 'lib/tests.dart';
 import 'lib/ui/files_controller.dart';
 import 'lib/ui/files_controller_delegate.dart';
@@ -90,15 +87,16 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   final bool developerMode;
 
   final JobManager jobManager = new JobManager();
-  ActivitySpinner _activitySpinner;
+  SparkStatus statusComponent;
 
-  AceContainer _aceContainer;
+  AceManager _aceManager;
   ThemeManager _aceThemeManager;
   KeyBindingManager _aceKeysManager;
   ws.Workspace _workspace;
   BuilderManager _buildManager;
   EditorManager _editorManager;
   EditorArea _editorArea;
+  LaunchManager _launchManager;
 
   final EventBus eventBus = new EventBus();
 
@@ -111,8 +109,7 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   FilesController _filesController;
   PlatformInfo _platformInfo;
   TestDriver _testDriver;
-
-  DirectoryEntry _gitDir;
+  ProjectLocationManager projectLocationManager;
 
   Spark(this.developerMode) {
     document.title = appName;
@@ -125,13 +122,12 @@ class Spark extends SparkModel implements FilesControllerDelegate {
     addParticipant(new _SparkSetupParticipant(this));
 
     // TODO: this event is not being fired. A bug with chrome apps / Dartium?
+    // Possibly this: https://github.com/dart-gde/chrome.dart/issues/115
     chrome.app.window.onClosed.listen((_) {
       close();
     });
 
     initWorkspace();
-
-    initActivitySpinner();
 
     createEditorComponents();
     initEditorArea();
@@ -148,12 +144,17 @@ class Spark extends SparkModel implements FilesControllerDelegate {
     initSplitView();
     initSaveStatusListener();
 
+    initLaunchManager();
+
     window.onFocus.listen((Event e) {
       // When the user switch to an other application, he might change the
       // content of the workspace from other applications.
       // For that reason, when the user switch back to Spark, we want to check
       // whether the content of the workspace changed.
-      workspace.refresh();
+      // TODO(devoncarew): This is causing workspace corruption issues. Our
+      // refresh method really needs to weave deltas back into the existing
+      // workspace model.
+      //workspace.refresh();
     });
 
     addBuilder(new DartBuilder());
@@ -163,12 +164,13 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   // SparkModel interface:
   //
 
-  AceContainer get aceContainer => _aceContainer;
+  AceManager get aceManager => _aceManager;
   ThemeManager get aceThemeManager => _aceThemeManager;
   KeyBindingManager get aceKeysManager => _aceKeysManager;
   ws.Workspace get workspace => _workspace;
   EditorManager get editorManager => _editorManager;
   EditorArea get editorArea => _editorArea;
+  LaunchManager get launchManager => _launchManager;
 
   preferences.PreferenceStore get localPrefs => _localPrefs;
   preferences.PreferenceStore get syncPrefs => _syncPrefs;
@@ -184,6 +186,21 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   String get appVersion => chrome.runtime.getManifest()['version'];
 
   PlatformInfo get platformInfo => _platformInfo;
+
+  /**
+   * Get the currently selected [Resource].
+   */
+  ws.Resource get currentResource => focusManager.currentResource;
+
+  /**
+   * Get the [File] currently being edited.
+   */
+  ws.File get currentEditedFile => focusManager.currentEditedFile;
+
+  /**
+   * Get the currently selected [Project].
+   */
+  ws.Project get currentProject => focusManager.currentProject;
 
   // TODO(ussuri): The below two methods are a temporary means to make Spark
   // reusable in SparkPolymer. Once the switch to Polymer is complete, they
@@ -208,7 +225,6 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   SparkDialog createDialog(Element dialogElement) =>
       new SparkBootjackDialog(dialogElement);
 
-
   //
   // Parts of ctor:
   //
@@ -232,29 +248,28 @@ class Spark extends SparkModel implements FilesControllerDelegate {
     _workspace = new ws.Workspace(localPrefs);
   }
 
-  void createEditorComponents() {
-    _aceContainer = new AceContainer(new DivElement());
-    _aceThemeManager = new ThemeManager(
-        aceContainer, syncPrefs, getUIElement('#changeTheme a span'));
-    _aceKeysManager = new KeyBindingManager(
-        aceContainer, syncPrefs, getUIElement('#changeKeys a span'));
-    _editorManager = new EditorManager(
-        workspace, aceContainer, localPrefs, eventBus);
-    _editorArea = new EditorArea(
-        getUIElement('#editorArea'),
-        getUIElement('#editedFilename'),
-        editorManager,
-        allowsLabelBar: true);
+  void initLaunchManager() {
+    _launchManager = new LaunchManager(_workspace);
   }
 
-  void initActivitySpinner() {
-    _activitySpinner = new ActivitySpinner(this, '#activitySpinner');
-    _activitySpinner.setShowing(false);
+  /**
+   * Returns the path separator specific to os.
+   */
+  String getPathSeparator() {
+    // TODO(grv) : Add check of os and return accordingly.
+    return '/';
+  }
 
-    // TODO: This might cause the spinner to "blink" between jobs.
-    jobManager.onChange.listen((JobManagerEvent event) {
-      _activitySpinner.setShowing(!event.finished);
-    });
+  void createEditorComponents() {
+    _aceManager = new AceManager(new DivElement());
+    _aceThemeManager = new ThemeManager(
+        aceManager, syncPrefs, getUIElement('#changeTheme .settings-label'));
+    _aceKeysManager = new KeyBindingManager(
+        aceManager, syncPrefs, getUIElement('#changeKeys .settings-label'));
+    _editorManager = new EditorManager(
+        workspace, aceManager, localPrefs, eventBus);
+    _editorArea = new EditorArea(
+        getUIElement('#editorArea'), editorManager, allowsLabelBar: true);
   }
 
   void initEditorManager() {
@@ -287,12 +302,16 @@ class Spark extends SparkModel implements FilesControllerDelegate {
         _filesController.selectFile(tab.file);
       }
       localPrefs.setValue('lastFileSelection', tab.file.path);
+      focusManager.setEditedFile(tab.file);
     });
   }
 
   void initFilesController() {
-    _filesController =
-        new FilesController(workspace, this, getUIElement('#fileViewArea'));
+    _filesController = new FilesController(
+        workspace, this, getUIElement('#fileViewArea'));
+    _filesController.onSelectionChange.listen((resource) {
+      focusManager.setCurrentResource(resource);
+    });
   }
 
   void initLookAndFeel() {
@@ -303,7 +322,7 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   void initSplitView() {
     _splitView = new SplitView(getUIElement('#splitview'));
     _splitView.onResized.listen((_) {
-      aceContainer.resize();
+      aceManager.resize();
       syncPrefs.setValue('splitViewPosition', _splitView.position.toString());
     });
     syncPrefs.getValue('splitViewPosition').then((String position) {
@@ -317,89 +336,44 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   }
 
   void initSaveStatusListener() {
-    Element element = getUIElement('#saveStatus');
-    Timer timer = new Timer(new Duration(seconds: 0), () => null);
-
-    eventBus.onEvent('fileModified').listen((_) {
-      //element.text = 'text modified…';
-      element.text = '';
-      timer.cancel();
-    });
-
-    eventBus.onEvent('filesSaved').listen((_) {
-      element.text = 'all changes saved';
-      timer.cancel();
-      timer = new Timer(new Duration(seconds: 3), () => (element.text = ''));
-    });
+    // Overridden in spark_polymer.dart.
   }
 
   void createActions() {
     _actionManager = new ActionManager();
 
+    actionManager.registerAction(new NextMarkerAction(this));
+    actionManager.registerAction(new PrevMarkerAction(this));
     actionManager.registerAction(new FileOpenInTabAction(this));
     actionManager.registerAction(new FileNewAsAction(this));
     actionManager.registerAction(new FileOpenAction(this));
-    actionManager.registerAction(new FileSaveAction(this));
-    actionManager.registerAction(new FileExitAction(this));
-    actionManager.registerAction(new ResourceCloseAction(this));
+    actionManager.registerAction(new FileNewAction(this, getDialogElement('#fileNewDialog')));
+    actionManager.registerAction(new FolderNewAction(this, getDialogElement('#folderNewDialog')));
     actionManager.registerAction(new FolderOpenAction(this));
-    actionManager.registerAction(new FolderNewAction(
-        this, getDialogElement('#folderNewDialog')));
-    actionManager.registerAction(new FileNewAction(
-        this, getDialogElement('#fileNewDialog')));
-    actionManager.registerAction(new FileRenameAction(
-        this, getDialogElement('#renameDialog')));
-    actionManager.registerAction(new FileDeleteAction(
-        this, getDialogElement('#deleteDialog')));
-    actionManager.registerAction(new GitCloneAction(
-        this, getDialogElement("#gitCloneDialog")));
-    actionManager.registerAction(new GitBranchAction(
-        this, getDialogElement("#gitBranchDialog")));
+    actionManager.registerAction(new NewProjectAction(this, getDialogElement('#newProjectDialog')));
+    actionManager.registerAction(new FileSaveAction(this));
+    actionManager.registerAction(new FileRenameAction(this, getDialogElement('#renameDialog')));
+    actionManager.registerAction(new ApplicationRunAction(this));
+    actionManager.registerAction(new GitCloneAction(this, getDialogElement("#gitCloneDialog")));
+    actionManager.registerAction(new GitBranchAction(this, getDialogElement("#gitBranchDialog")));
+    actionManager.registerAction(new GitCheckoutAction(this, getDialogElement("#gitCheckoutDialog")));
+    actionManager.registerAction(new GitCommitAction(this, getDialogElement("#gitCommitDialog")));
     actionManager.registerAction(new RunTestsAction(this));
-    actionManager.registerAction(new AboutSparkAction(
-        this, getDialogElement('#aboutDialog')));
+    actionManager.registerAction(new SettingsAction(this, getDialogElement('#settingsDialog')));
+    actionManager.registerAction(new AboutSparkAction(this, getDialogElement('#aboutDialog')));
+    actionManager.registerAction(new ResourceCloseAction(this));
+    actionManager.registerAction(new FileDeleteAction(this, getDialogElement('#deleteDialog')));
+    actionManager.registerAction(new FileExitAction(this));
 
     actionManager.registerKeyListener();
   }
 
   void initToolbar() {
-    getUIElement("#openFile").onClick.listen(
-        (_) => actionManager.getAction('file-open').invoke());
-    getUIElement("#newFile").onClick.listen(
-        (_) => actionManager.getAction('file-new-as').invoke());
+
   }
 
   void buildMenu() {
-    UListElement ul = getUIElement('#hotdogMenu ul');
 
-    ul.children.add(createMenuItem(actionManager.getAction('file-open')));
-    ul.children.add(createMenuItem(actionManager.getAction('folder-open')));
-
-    ul.children.add(createMenuSeparator());
-
-    // Theme control.
-    Element theme = ul.querySelector('#changeTheme');
-    ul.children.remove(theme);
-    ul.children.add(theme);
-    ul.querySelector('#themeLeft').onClick.listen((e) => aceThemeManager.dec(e));
-    ul.querySelector('#themeRight').onClick.listen((e) => aceThemeManager.inc(e));
-
-    // Key binding control.
-    Element keys = ul.querySelector('#changeKeys');
-    ul.children.remove(keys);
-    ul.children.add(keys);
-    ul.querySelector('#keysLeft').onClick.listen((e) => aceKeysManager.dec(e));
-    ul.querySelector('#keysRight').onClick.listen((e) => aceKeysManager.inc(e));
-
-    if (developerMode) {
-      ul.children.add(createMenuSeparator());
-      ul.children.add(createMenuItem(actionManager.getAction('run-tests')));
-      ul.children.add(createMenuItem(actionManager.getAction('git-clone')));
-      ul.children.add(createMenuItem(actionManager.getAction('git-branch')));
-    }
-
-    ul.children.add(createMenuSeparator());
-    ul.children.add(createMenuItem(actionManager.getAction('help-about')));
   }
 
   //
@@ -417,10 +391,10 @@ class Spark extends SparkModel implements FilesControllerDelegate {
   /**
    * Allow for creating a new file using the Save as dialog.
    */
-  void newFileAs() {
+  Future<bool> newFileAs() {
     chrome.ChooseEntryOptions options = new chrome.ChooseEntryOptions(
         type: chrome.ChooseEntryType.SAVE_FILE);
-    chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
+    return chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
       chrome.ChromeFileEntry entry = res.entry;
 
       if (entry != null) {
@@ -429,13 +403,13 @@ class Spark extends SparkModel implements FilesControllerDelegate {
           workspace.save();
         });
       }
-    }).catchError((e) => null);
+    });
   }
 
-  void openFile() {
+  Future<bool> openFile() {
     chrome.ChooseEntryOptions options = new chrome.ChooseEntryOptions(
         type: chrome.ChooseEntryType.OPEN_WRITABLE_FILE);
-    chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
+    return chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
       chrome.ChromeFileEntry entry = res.entry;
 
       if (entry != null) {
@@ -444,22 +418,31 @@ class Spark extends SparkModel implements FilesControllerDelegate {
           workspace.save();
         });
       }
-    }).catchError((e) => null);
+    });
   }
 
-  void openFolder() {
-    chrome.ChooseEntryOptions options = new chrome.ChooseEntryOptions(
-        type: chrome.ChooseEntryType.OPEN_DIRECTORY);
-    chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
-      chrome.ChromeFileEntry entry = res.entry;
-
+  Future<bool> openFolder() {
+    return _selectFolder().then((chrome.ChromeFileEntry entry) {
       if (entry != null) {
         workspace.link(entry).then((file) {
-          _filesController.selectFile(file);
+          Timer.run(() {
+            _filesController.selectFile(file);
+            _filesController.setFolderExpanded(file);
+          });
           workspace.save();
         });
       }
-    }).catchError((e) => null);
+    });
+  }
+
+  void showSuccessMessage(String message) {
+    statusComponent.temporaryMessage = message;
+  }
+
+  void showErrorMessage(String title, String message) {
+    // TODO: Implement.
+
+    print('${title}: ${message}');
   }
 
   void onSplitViewUpdate(int position) { }
@@ -502,8 +485,7 @@ class Spark extends SparkModel implements FilesControllerDelegate {
     }
   }
 
-  Element getContextMenuContainer() =>
-      getUIElement('#file-item-context-menu');
+  Element getContextMenuContainer() => getUIElement('#file-item-context-menu');
 
   List<ContextAction> getActionsFor(List<ws.Resource> resources) =>
       actionManager.getContextActions(resources);
@@ -534,6 +516,95 @@ class PlatformInfo {
   PlatformInfo._(this.os, this.arch, this.naclArch);
 
   String toString() => "${os}, ${arch}, ${naclArch}";
+
+  bool get isCros => os == 'cros';
+}
+
+/**
+ * Used to manage the default location to create new projects.
+ *
+ * This class also abstracts a bit other the differences between Chrome OS and
+ * Windows/Mac/linux.
+ */
+class ProjectLocationManager {
+  preferences.PreferenceStore _prefs;
+  chrome.DirectoryEntry _projectLocation;
+
+  /**
+   * Create a ProjectLocationManager asynchronously, restoring the default
+   * project location from the given preferences.
+   */
+  static Future<ProjectLocationManager> restoreManager(preferences.PreferenceStore prefs) {
+    return prefs.getValue('projectFolder').then((String folderToken) {
+      if (folderToken == null) {
+        return new ProjectLocationManager._(prefs, null);
+      }
+
+      return chrome.fileSystem.restoreEntry(folderToken).then((chrome.Entry entry) {
+        return new ProjectLocationManager._(prefs, entry);
+      });
+    });
+  }
+
+  ProjectLocationManager._(this._prefs, this._projectLocation);
+
+  /**
+   * Returns the default location to create new projects in. For Chrome OS, this
+   * will be the sync filesystem. This method can return `null` if the user
+   * cancels the folder selection dialog.
+   */
+  Future<chrome.DirectoryEntry> getProjectLocation() {
+    if (_projectLocation != null) {
+      return new Future.value(_projectLocation);
+    }
+
+    // On Chrome OS, use the sync filesystem.
+    if (_isCros()) {
+      return chrome.syncFileSystem.requestFileSystem().then((fs) {
+        return fs.root;
+      });
+    }
+
+    // Display a dialog asking the user to choose a default project folder.
+    // TODO: We need to provide an explaination to the user about what this
+    // folder is for.
+    return _selectFolder(suggestedName: 'projects').then((entry) {
+      if (entry == null) {
+        return null;
+      }
+
+      _projectLocation = entry;
+      _prefs.setValue('projectFolder', chrome.fileSystem.retainEntry(entry));
+      return _projectLocation;
+    });
+  }
+
+  /**
+   * This will create a new folder in default project location. It will attempt
+   * to use the given [defaultName], but will disambiguate it if necessary. For
+   * example, if `defaultName` already exists, the created folder might be named
+   * something like `defaultName-1` instead.
+   */
+  Future<chrome.DirectoryEntry> createNewFolder(String defaultName) {
+    return getProjectLocation().then((root) {
+      return _create(root, defaultName, 1);
+    });
+  }
+
+  Future<chrome.DirectoryEntry> _create(
+      chrome.DirectoryEntry parent, String baseName, int count) {
+    String name = count == 1 ? baseName : '${baseName}-${count}';
+
+    return parent.createDirectory(name, exclusive: true).then((dir) {
+      return dir;
+    }).catchError((_) {
+      if (count > 20) {
+        return null;
+      } else {
+        return _create(parent, baseName, count + 1);
+      }
+    });
+  }
 }
 
 class _SparkSetupParticipant extends LifecycleParticipant {
@@ -548,8 +619,13 @@ class _SparkSetupParticipant extends LifecycleParticipant {
       spark.workspace.restore().then((value) {
         if (spark.workspace.getFiles().length == 0) {
           // No files, just focus the editor.
-          spark.aceContainer.focus();
+          spark.aceManager.focus();
         }
+      });
+      spark.workspace.restoreSyncFs();
+    }).then((_) {
+      return ProjectLocationManager.restoreManager(spark.localPrefs).then((manager) {
+        spark.projectLocationManager = manager;
       });
     });
   }
@@ -563,23 +639,29 @@ class _SparkSetupParticipant extends LifecycleParticipant {
 
   Future applicationClosed(Application application) {
     spark.editorManager.persistState();
-
+    spark.launchManager.dispose();
     spark.localPrefs.flush();
     spark.syncPrefs.flush();
   }
 }
 
-// TODO: This should be moved into the ui/ directory.
-class ActivitySpinner {
-  Element element;
+/**
+ * Allows a user to select a folder on disk. Returns the selected folder
+ * entry. Returns `null` in case the user cancels the action.
+ */
+Future<chrome.ChromeFileEntry> _selectFolder({String suggestedName}) {
+  Completer completer = new Completer();
+  chrome.ChooseEntryOptions options = new chrome.ChooseEntryOptions(
+      type: chrome.ChooseEntryType.OPEN_DIRECTORY);
+  if (suggestedName != null) options.suggestedName = suggestedName;
+  chrome.fileSystem.chooseEntry(options).then((chrome.ChooseEntryResult res) {
+    completer.complete(res.entry);
+  }).catchError((e) => completer.complete(null));
+  return completer.future;
+}
 
-  ActivitySpinner(Spark spark, String elementId) {
-    element = spark.getUIElement(elementId);
-  }
-
-  void setShowing(bool showing) {
-    element.style.opacity = showing ? '1' : '0';
-  }
+bool _isCros() {
+  return (SparkModel.instance as Spark).platformInfo.isCros;
 }
 
 /**
@@ -621,6 +703,24 @@ abstract class SparkAction extends Action {
     List<ws.Resource> resources = object as List<ws.Resource>;
     return resources.length == 1;
   }
+
+  /**
+   * Returns true if `object` is a list with a single item and this item is a
+   * [Project].
+   */
+  bool _isProject(object) {
+    if (!_isResourceList(object)) {
+      return false;
+    }
+    return object.length == 1 && object.first is ws.Project;
+  }
+
+  /**
+   * Returns true if `context` is a list with a single item, the item is a
+   * [Project], and that project is under SCM.
+   */
+  bool _isScmProject(context) =>
+      _isProject(context) && scm.isUnderScm(context.first);
 
   /**
    * Returns true if `object` is a list with a single item and this item is a
@@ -738,40 +838,59 @@ class FileOpenAction extends SparkAction {
     defaultBinding("ctrl-o");
   }
 
-  void _invoke([Object context]) => spark.openFile();
+  void _invoke([Object context]) {
+    spark.openFile();
+  }
 }
 
 class FileNewAction extends SparkActionWithDialog implements ContextAction {
-   InputElement _nameElement;
-   ws.Folder folder;
+  InputElement _nameElement;
+  ws.Folder folder;
 
-   FileNewAction(Spark spark, Element dialog)
-     : super(spark, "file-new", "New File…", dialog) {
-       defaultBinding("ctrl-n");
-       _nameElement = _triggerOnReturn("#fileNewName");
-   }
+  FileNewAction(Spark spark, Element dialog)
+      : super(spark, "file-new", "New File…", dialog) {
+    defaultBinding("ctrl-n");
+    _nameElement = _triggerOnReturn("#fileName");
+  }
 
-   void _invoke([List<ws.Folder> folders]) {
-     if (folders != null && folders.isNotEmpty) {
-       folder = folders.first;
-       _nameElement.value = '';
-       _show();
-     }
-   }
+  void _invoke([List<ws.Folder> folders]) {
+    if (folders != null && folders.isNotEmpty) {
+      folder = folders.first;
+      _nameElement.value = '';
+      _show();
+    } else {
+      // create new file in sync fs on chrome os
+      if (spark.platformInfo.isCros && spark.workspace.syncFsIsAvailable) {
+        _nameElement.value = '';
+        _show();
+      } else { // use file save as for local fs
+        spark.newFileAs();
+      }
+    }
+  }
 
-  // called when user validates the dialog
   void _commit() {
     var name = _nameElement.value;
     if (name.isNotEmpty) {
-      folder.createNewFile(name).then((file) {
-        // Delay a bit to allow the files view to process the new file event.
-        // TODO: This is due to a race condition in when the files view receives
-        // the resource creation event; we should remove the possibility for
-        // this to occur.
-        Timer.run(() {
-          spark.selectInEditor(file, forceOpen: true, replaceCurrent: true);
+      if (folder != null) {
+        folder.createNewFile(name).then((file) {
+          // Delay a bit to allow the files view to process the new file event.
+          // TODO: This is due to a race condition in when the files view receives
+          // the resource creation event; we should remove the possibility for
+          // this to occur.
+          Timer.run(() {
+            spark.selectInEditor(file, forceOpen: true, replaceCurrent: true);
+          });
         });
-      });
+      } else {
+        spark.workspace.createFileSyncFs(name).then((file) {
+          if (file != null) {
+            Timer.run(() {
+              spark.selectInEditor(file, forceOpen: true, replaceCurrent: true);
+            });
+          }
+        });
+      }
     }
   }
 
@@ -783,7 +902,9 @@ class FileNewAction extends SparkActionWithDialog implements ContextAction {
 class FileNewAsAction extends SparkAction {
   FileNewAsAction(Spark spark) : super(spark, "file-new-as", "New File…");
 
-  void _invoke([Object context]) => spark.newFileAs();
+  void _invoke([Object context]) {
+    spark.newFileAs();
+  }
 }
 
 class FileSaveAction extends SparkAction {
@@ -907,25 +1028,80 @@ class FileExitAction extends SparkAction {
   }
 }
 
+class ApplicationRunAction extends SparkAction implements ContextAction {
+  ApplicationRunAction(Spark spark) : super(
+      spark, "application-run", "Run Application") {
+    defaultBinding("ctrl-r");
+
+    enabled = false;
+
+    spark.focusManager.onResourceChange.listen((r) => _updateEnablement(r));
+  }
+
+  void _invoke([context]) {
+    ws.Resource resource;
+
+    if (context == null) {
+      resource = spark.focusManager.currentResource;
+    } else {
+      resource = context.first;
+    }
+    spark.launchManager.run(resource);
+  }
+
+  String get category => 'application';
+
+  bool appliesTo(list) => list.length == 1 && _appliesTo(list.first);
+
+  bool _appliesTo(ws.Resource resource) {
+    return spark.launchManager.canRun(resource);
+  }
+
+  void _updateEnablement(ws.Resource resource) {
+    enabled = _appliesTo(resource);
+  }
+}
+
+class PrevMarkerAction extends SparkAction {
+  PrevMarkerAction(Spark spark) : super(
+      spark, "marker-prev", "Previous Marker") {
+    defaultBinding("ctrl-shift-p");
+  }
+
+  void _invoke([Object context]) {
+    spark._aceManager.selectPrevMarker();
+  }
+}
+
+class NextMarkerAction extends SparkAction {
+  NextMarkerAction(Spark spark) : super(
+      spark, "marker-next", "Next Marker") {
+    defaultBinding("ctrl-p");
+  }
+
+  void _invoke([Object context]) {
+    spark._aceManager.selectNextMarker();
+  }
+}
+
 class FolderNewAction extends SparkActionWithDialog implements ContextAction {
-   InputElement _nameElement;
-   ws.Folder folder;
+  InputElement _nameElement;
+  ws.Folder folder;
 
-   FolderNewAction(Spark spark, Element dialog)
-     : super(spark, "folder-new", "New Folder…", dialog) {
-     defaultBinding("ctrl-shift-n");
-     _nameElement = _triggerOnReturn("#folderName");
-   }
+  FolderNewAction(Spark spark, Element dialog)
+      : super(spark, "folder-new", "New Folder…", dialog) {
+    defaultBinding("ctrl-shift-n");
+    _nameElement = _triggerOnReturn("#folderName");
+  }
 
-   void _invoke([List<ws.Folder> folders]) {
-     if (folders != null && folders.isNotEmpty) {
-       folder = folders.first;
-       _nameElement.value = '';
-       _show();
-     }
-   }
+  void _invoke([List<ws.Folder> folders]) {
+    if (folders != null && folders.isNotEmpty) {
+      folder = folders.first;
+      _nameElement.value = '';
+      _show();
+    }
+  }
 
-  // called when user validates the dialog
   void _commit() {
     var name = _nameElement.value;
     if (name.isNotEmpty) {
@@ -943,19 +1119,53 @@ class FolderNewAction extends SparkActionWithDialog implements ContextAction {
   bool appliesTo(Object object) => _isSingleFolder(object);
 }
 
+class NewProjectAction extends SparkActionWithDialog {
+  InputElement _nameElement;
+  ws.Folder folder;
+
+  NewProjectAction(Spark spark, Element dialog)
+      : super(spark, "project-new", "New Project…", dialog) {
+    _nameElement = _triggerOnReturn("#name");
+  }
+
+  void _invoke([context]) {
+    _nameElement.value = '';
+    _show();
+  }
+
+  void _commit() {
+    var name = _nameElement.value.trim();
+    if (name.isNotEmpty) {
+      spark.projectLocationManager.createNewFolder(name)
+          .then((chrome.DirectoryEntry dir) {
+        return spark.workspace.link(dir).then((project) {
+          spark.showSuccessMessage('Created ${project.name}');
+          Timer.run(() {
+            spark._filesController.selectFile(project);
+            spark._filesController.setFolderExpanded(project);
+          });
+          spark.workspace.save();
+        });
+      });
+    }
+  }
+}
+
 class FolderOpenAction extends SparkAction {
   FolderOpenAction(Spark spark) : super(spark, "folder-open", "Open Folder…");
 
-  void _invoke([Object context]) => spark.openFolder();
+  void _invoke([Object context]) {
+    spark.openFolder();
+  }
 }
 
+/* Git operations */
+
 class GitCloneAction extends SparkActionWithDialog {
-  InputElement _projectNameElement;
   InputElement _repoUrlElement;
 
   GitCloneAction(Spark spark, Element dialog)
       : super(spark, "git-clone", "Git Clone…", dialog) {
-    _projectNameElement = getElement("#gitProjectName");
     _repoUrlElement = _triggerOnReturn("#gitRepoUrl");
   }
 
@@ -965,94 +1175,217 @@ class GitCloneAction extends SparkActionWithDialog {
 
   void _commit() {
     // TODO(grv): add verify checks.
-    _GitCloneJob job = new _GitCloneJob(
-        _projectNameElement.value, _repoUrlElement.value, spark);
+    String url = _repoUrlElement.value;
+    if (!url.endsWith('.git')) {
+      url = url + '.git';
+    }
+
+    String projectName = url.split('/').last;
+    if (projectName.endsWith('.git')) {
+      projectName = projectName.substring(0, projectName.length - 4);
+    }
+
+    _GitCloneJob job = new _GitCloneJob(url, projectName, spark);
     spark.jobManager.schedule(job);
   }
 }
 
-class _GitCloneJob extends Job {
-  String projectName;
-  String url;
-  Spark spark;
-
-  _GitCloneJob(this.projectName, this.url, this.spark)
-      : super("Cloning …");
-
-  Future<Job> run(ProgressMonitor monitor) {
-    monitor.start(name, 1);
-
-    Completer completer = new Completer();
-
-    getGitTestFileSystem().then((/*chrome_files.CrFileSystem*/ fs) {
-      return fs.root.createDirectory(projectName).then((chrome.DirectoryEntry dir) {
-        spark._gitDir = dir;
-        GitOptions options = new GitOptions();
-        options.root = dir;
-        options.repoUrl = url;
-        options.depth = 1;
-        options.store = new ObjectStore(dir);
-        Clone clone = new Clone(options);
-        return options.store.init().then((_) {
-          return clone.clone().then((_) {
-            return spark.workspace.link(dir).then((folder) {
-              Timer.run(() {
-                spark._filesController.selectFile(folder);
-              });
-              spark.workspace.save();
-            });
-          });
-        });
-      });
-    }).whenComplete(() => completer.complete(this));
-
-    return completer.future;
-  }
-}
-
-class GitBranchAction extends SparkActionWithDialog {
+class GitBranchAction extends SparkActionWithDialog implements ContextAction {
+  ws.Project project;
+  scm.GitScmProjectOperations gitOperations;
   InputElement _branchNameElement;
 
   GitBranchAction(Spark spark, Element dialog)
       : super(spark, "git-branch", "Git Branch…", dialog) {
-    _branchNameElement = getElement("#gitBranchName");
+    _branchNameElement = _triggerOnReturn("#gitBranchName");
   }
 
-  void _invoke([Object context]) {
+  void _invoke([context]) {
+    project = context.first;
+    gitOperations = scm.getScmOperationsFor(project);
     _show();
   }
 
   void _commit() {
     // TODO(grv): add verify checks.
-    _GitBranchJob job = new _GitBranchJob(_branchNameElement.value, spark);
+    _GitBranchJob job = new _GitBranchJob(
+        gitOperations, _branchNameElement.value);
     spark.jobManager.schedule(job);
+  }
+
+  String get category => 'git';
+
+  bool appliesTo(context) => _isScmProject(context);
+}
+
+class GitCommitAction extends SparkActionWithDialog implements ContextAction {
+  ws.Project project;
+  scm.GitScmProjectOperations gitOperations;
+  InputElement _commitMessageElement;
+
+  GitCommitAction(Spark spark, Element dialog)
+      : super(spark, "git-commit", "Git Commit…", dialog) {
+    _commitMessageElement = getElement("#commitMessage");
+  }
+
+  void _invoke([context]) {
+    project = context.first;
+    gitOperations = scm.getScmOperationsFor(project);
+    _commitMessageElement.value = '';
+
+    _show();
+  }
+
+  void _commit() {
+    // TODO(grv): add verify checks.
+    _GitCommitJob job = new _GitCommitJob(
+        gitOperations, _commitMessageElement.value, spark);
+    spark.jobManager.schedule(job);
+  }
+
+  String get category => 'git';
+
+  bool appliesTo(context) => _isScmProject(context);
+}
+
+class GitCheckoutAction extends SparkActionWithDialog implements ContextAction {
+  ws.Project project;
+  scm.GitScmProjectOperations gitOperations;
+  SelectElement _selectElement;
+
+  GitCheckoutAction(Spark spark, Element dialog)
+      : super(spark, "git-checkout", "Git Checkout…", dialog) {
+    _selectElement = getElement("#gitCheckout");
+  }
+
+  void _invoke([List context]) {
+    project = context.first;
+    gitOperations = scm.getScmOperationsFor(project);
+    gitOperations.getBranchName().then((currentBranchName) {
+      (getElement('#currentBranchName') as InputElement).value = currentBranchName;
+
+      // Clear out the old Select options.
+      _selectElement.length = 0;
+
+      gitOperations.getAllBranchNames().then((List<String> branchNames) {
+        branchNames.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+        for (String branchName in branchNames) {
+          _selectElement.append(
+              new OptionElement(data: branchName, value: branchName));
+        }
+        _selectElement.selectedIndex = branchNames.indexOf(currentBranchName);
+      });
+      _show();
+    });
+  }
+
+  void _commit() {
+    // TODO(grv): add verify checks.
+    String branchName = _selectElement.options[
+        _selectElement.selectedIndex].value;
+    _GitCheckoutJob job = new _GitCheckoutJob(gitOperations, branchName, spark);
+    spark.jobManager.schedule(job);
+  }
+
+  String get category => 'git';
+
+  bool appliesTo(context) => _isScmProject(context);
+}
+
+class _GitCloneJob extends Job {
+  String url;
+  String _projectName;
+  Spark spark;
+
+  _GitCloneJob(this.url, String projectName, this.spark)
+      : super("Cloning ${projectName}…") {
+    _projectName = projectName;
+  }
+
+  Future run(ProgressMonitor monitor) {
+    monitor.start(name, 1);
+
+    return spark.projectLocationManager.createNewFolder(_projectName)
+        .then((chrome.DirectoryEntry dir) {
+      scm.ScmProvider scmProvider = scm.getProviderType('git');
+
+      return scmProvider.clone(url, dir).then((_) {
+        return spark.workspace.link(dir).then((project) {
+          spark.showSuccessMessage('Cloned into ${project.name}');
+          Timer.run(() {
+            spark._filesController.selectFile(project);
+            spark._filesController.setFolderExpanded(project);
+          });
+          spark.workspace.save();
+        });
+      });
+    }).catchError((e) {
+      spark.showErrorMessage('Error cloning ${_projectName}', e.toString());
+    });
   }
 }
 
 class _GitBranchJob extends Job {
+  scm.GitScmProjectOperations gitOperations;
   String _branchName;
   String url;
-  Spark spark;
 
-  _GitBranchJob(this._branchName, this.spark)
-  : super("Branch …");
+  _GitBranchJob(this.gitOperations, String branchName)
+      : super("Creating ${branchName}…") {
+    _branchName = branchName;
+  }
 
-  Future<Job> run(ProgressMonitor monitor) {
+  Future run(ProgressMonitor monitor) {
     monitor.start(name, 1);
 
-    Completer completer = new Completer();
-    GitOptions options = new GitOptions();
-    options.root = spark._gitDir;
-    options.branchName = _branchName;
-    options.store = new ObjectStore(spark._gitDir);
-    Branch.branch(options).then((entry) {
-      Checkout.checkout(options);
-      // TODO(grv) : checkout the new branch.
-    }, onError: (e) {
-      print(e);
-    }).whenComplete(() => completer.complete(this));
+    return gitOperations.createBranch(_branchName).then((_) {
+      return gitOperations.checkoutBranch(_branchName).then((_) {
+        SparkModel.instance.showSuccessMessage('Created ${_branchName}');
+      });
+    }).catchError((e) {
+      SparkModel.instance.showErrorMessage(
+          'Error creating branch ${_branchName}', e.toString());
+    });
+  }
+}
 
-    return completer.future;
+class _GitCommitJob extends Job {
+  scm.GitScmProjectOperations gitOperations;
+  String _commitMessage;
+  Spark spark;
+
+  _GitCommitJob(this.gitOperations, this._commitMessage, this.spark)
+      : super("Committing…");
+
+  Future run(ProgressMonitor monitor) {
+    monitor.start(name, 1);
+
+    return gitOperations.commit(_commitMessage).then((_) {
+      spark.showSuccessMessage('Committed changes');
+    }).catchError((e) {
+      spark.showErrorMessage('Error committing changes', e.toString());
+    });
+  }
+}
+
+class _GitCheckoutJob extends Job {
+  scm.GitScmProjectOperations gitOperations;
+  String _branchName;
+  Spark spark;
+
+  _GitCheckoutJob(this.gitOperations, String branchName, this.spark)
+      : super("Switching to ${branchName}…") {
+    _branchName = branchName;
+  }
+
+  Future run(ProgressMonitor monitor) {
+    monitor.start(name, 1);
+
+    return gitOperations.checkoutBranch(_branchName).then((_) {
+      spark.showSuccessMessage('Switched to branch ${_branchName}');
+    }).catchError((e) {
+      spark.showErrorMessage('Error switching to ${_branchName}', e.toString());
+    });
   }
 }
 
@@ -1071,6 +1404,27 @@ class AboutSparkAction extends SparkActionWithDialog {
       checkbox.onChange.listen((e) => _isTrackingPermitted = checkbox.checked);
 
       getElement('#aboutVersion').text = spark.appVersion;
+
+      _initialized = true;
+    }
+
+    _show();
+  }
+
+  void _commit() {
+    // Nothing to do for this dialog.
+  }
+}
+
+
+class SettingsAction extends SparkActionWithDialog {
+  bool _initialized = false;
+
+  SettingsAction(Spark spark, Element dialog)
+      : super(spark, "settings", "Settings", dialog);
+
+  void _invoke([Object context]) {
+    if (!_initialized) {
 
       _initialized = true;
     }

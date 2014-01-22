@@ -34,6 +34,9 @@ class GitOptions {
   int depth;
   Function progressCallback;
 
+  GitOptions({this.root, this.repoUrl, this.depth, this.store,
+              this.branchName, this.commitMessage});
+
   js.JsObject toJsMap() {
     Map<String, dynamic> options = new Map<String, dynamic>();
 

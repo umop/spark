@@ -10,7 +10,7 @@ import 'dart:core';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart' as archive;
+import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:utf/utf.dart';
 
@@ -298,11 +298,9 @@ class Pack {
       _matchVersion(2);
       numObjects = _matchNumberOfObjects();
 
-      print('numObjects: ${numObjects}');
-
       for (int i = 0; i < numObjects; ++i) {
         PackObject object = _matchObjectAtOffset(_offset);
-        object.crc = archive.getCrc32(data.sublist(object.offset, _offset));
+        object.crc = getCrc32(data.sublist(object.offset, _offset));
 
         // hold on to the data for delta style objects.
         switch (object.type) {

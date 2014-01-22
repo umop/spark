@@ -6,7 +6,7 @@ library git.commands.utils;
 
 import 'dart:async';
 
-import 'package:chrome_gen/chrome_app.dart' as chrome;
+import 'package:chrome/chrome_app.dart' as chrome;
 
 import '../objectstore.dart';
 
@@ -14,8 +14,8 @@ class Conditions {
 
   static Future<GitConfig> checkForUncommittedChanges(chrome.DirectoryEntry dir,
       ObjectStore store) {
-    //TODO implement.
-    throw "To be implmented.";
+    //TODO(grv) : implement.
+    return new Future.value();
   }
 
 }

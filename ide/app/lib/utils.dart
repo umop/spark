@@ -6,7 +6,7 @@ library spark.utils;
 
 import 'dart:web_audio';
 
-import 'package:chrome_gen/chrome_app.dart' as chrome;
+import 'package:chrome/chrome_app.dart' as chrome;
 
 /**
  * This method is shorthand for [chrome.i18n.getMessage].
@@ -15,6 +15,20 @@ String i18n(String messageId) => chrome.i18n.getMessage(messageId);
 
 String capitalize(String s) {
   return s.isEmpty ? '' : (s[0].toUpperCase() + s.substring(1));
+}
+
+/**
+ * Returns a reasonable approximation of the given string converted into title
+ * case. All words are capitalized with the exception of short ones.
+ */
+String toTitleCase(String s) {
+  return s.split(' ').map((word) {
+    if (word.length <= 2 || word == 'and' || word == 'the') {
+      return word;
+    } else {
+      return capitalize(word);
+    }
+  }).join(' ');
 }
 
 AudioContext _ctx;

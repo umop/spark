@@ -7,6 +7,7 @@
  */
 library spark.ui.widgets.files_controller;
 
+import 'dart:async';
 import 'dart:convert' show JSON;
 import 'dart:html' as html;
 
@@ -38,6 +39,8 @@ class FilesController implements TreeViewDelegate {
   Map<String, List<String>> _childrenCache;
   // Preferences where to store tree expanded/collapsed state.
   preferences.PreferenceStore localPrefs = preferences.localStore;
+  // The file selection stream controller.
+  StreamController<Resource> _selectionController = new StreamController.broadcast();
 
   FilesController(Workspace workspace,
                   FilesControllerDelegate delegate,
@@ -90,6 +93,8 @@ class FilesController implements TreeViewDelegate {
     if (file is File) {
       _delegate.selectInEditor(file, forceOpen: forceOpen);
     }
+    _selectionController.add(file);
+    _treeView.scrollIntoNode(file.path, html.ScrollAlignment.CENTER);
   }
 
   void selectFirstFile({bool forceOpen: false}) {
@@ -98,6 +103,21 @@ class FilesController implements TreeViewDelegate {
     }
     selectFile(_files[0], forceOpen: forceOpen);
   }
+
+  void setFolderExpanded(Container resource) {
+    for (Container container in _collectParents(resource, [])) {
+      if (!_treeView.isNodeExpanded(container.path)) {
+        _treeView.setNodeExpanded(container.path, true);
+      }
+    }
+
+    _treeView.setNodeExpanded(resource.path, true);
+  }
+
+  /**
+   * Listen for selection change events.
+   */
+  Stream<Resource> get onSelectionChange => _selectionController.stream;
 
   // Implementation of [TreeViewDelegate] interface.
 
@@ -155,6 +175,7 @@ class FilesController implements TreeViewDelegate {
       if (resource is File) {
         _delegate.selectInEditor(resource, forceOpen: true, replaceCurrent: true);
       }
+      _selectionController.add(resource);
     }
   }
 
@@ -478,10 +499,11 @@ class FilesController implements TreeViewDelegate {
 
   void _cacheChildren(String nodeUID) {
     if (_childrenCache[nodeUID] == null) {
-      _childrenCache[nodeUID] =
-          (_filesMap[nodeUID] as Container).getChildren().
-          map((Resource resource) => resource.path).toList();
-      _childrenCache[nodeUID].sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      Container container = _filesMap[nodeUID];
+      _childrenCache[nodeUID] = container.getChildren().
+          where(_showResource).map((r) => r.path).toList();
+      _childrenCache[nodeUID].sort(
+          (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
     }
   }
 
@@ -528,7 +550,7 @@ class FilesController implements TreeViewDelegate {
    * Event handler for workspace events.
    */
   void _processEvents(ResourceChangeEvent event) {
-    event.changes.forEach((change) {
+    event.changes.where((d) => _showResource(d.resource)).forEach((change) {
       if (change.type == EventType.ADD) {
         var resource = change.resource;
         if (resource.isTopLevel) {
@@ -556,6 +578,16 @@ class FilesController implements TreeViewDelegate {
   }
 
   /**
+   * Returns whether the given resource should be filtered from the Files view.
+   */
+  bool _showResource(Resource resource) {
+    if (resource is Folder && resource.name == '.git') {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Traverse all the created [FileItemCell]s, calling `updateFileStatus()`.
    */
   void _processMarkerChange() {
@@ -573,7 +605,9 @@ class FilesController implements TreeViewDelegate {
     _filesMap[resource.path] = resource;
     if (resource is Container) {
       resource.getChildren().forEach((child) {
-        _recursiveAddResource(child);
+        if (_showResource(child)) {
+          _recursiveAddResource(child);
+        }
       });
     }
   }
@@ -642,6 +676,8 @@ class FilesController implements TreeViewDelegate {
       // to close the dropdown. For example dropdown.toggle() won't work.
       menuContainer.classes.remove('open');
       cancelEvent(event);
+
+      _treeView.focus();
     }
 
     // When the user clicks outside the menu, we'll close it.

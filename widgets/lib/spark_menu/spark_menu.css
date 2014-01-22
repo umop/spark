@@ -1,0 +1,23 @@
+/* Copyright (c) 2014, Google Inc. Please see the AUTHORS file for details. */
+/* All rights reserved.  Use of this source code is governed by a BSD-style */
+/* license that can be found in the LICENSE file. */
+/*@polyfill spark-menu-item */
+
+::content spark-menu-item {
+  display: block;
+  box-sizing: border-box;
+  color: #000;
+  -moz-box-sizing: border-box;
+  padding: 0 10px;
+  border: none;
+  height: 30px;
+  font-family: Helvetica, Sans-serif;
+  font-size: 14px;
+  cursor: default;
+  white-space: nowrap;
+  min-width: 160px;
+}
+
+::content spark-menu-item:hover {
+  color: #fff;
+}

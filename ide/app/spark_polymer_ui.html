@@ -12,6 +12,7 @@
 <link rel="import" href="packages/spark_widgets/spark_modal/spark_modal.html">
 <link rel="import" href="packages/spark_widgets/spark_overlay/spark_overlay.html">
 <link rel="import" href="packages/spark_widgets/spark_splitter/spark_splitter.html">
+<link rel="import" href="packages/spark_widgets/spark_status/spark_status.html">
 <link rel="import" href="packages/spark_widgets/spark_toolbar/spark_toolbar.html">
 
 <!--link rel="import" href="packages/polymer_elements/polymer_flex_layout/polymer_flex_panel.html"-->
@@ -22,235 +23,23 @@
     <!-- BUG: https://code.google.com/p/dart/issues/detail?id=14382 -->
     <!-- link rel="stylesheet" href="spark_polymer_ui.css"-->
     <style>
-
-@import url("packages/bootjack/css/bootstrap.css");
-@import url("packages/bootjack/css/bootstrap-theme.css");
-@import url("lib/ui/widgets/listview.css");
-@import url("lib/ui/widgets/treeview.css");
-@import url("lib/ui/widgets/tabview.css");
-@import url("lib/ui/widgets/imageviewer.css");
-
-#saveStatus {
-  flex: 1;
-  color: #ccc;
-  margin-left: 6px;
-  vertical-align: bottom;
-  white-space: nowrap;
-}
-
-.fileview-filename-container {
-}
-
-.fileview-filename-container .filename {
-  display: inline-block;
-}
-
-.fileview-filename-container .fileStatus.error {
-  background: #F55;
-  border-radius: 2px;
-  position: absolute;
-  top: 2px;
-  right: 1px;
-  height: 16px;
-  width: 4px;
-}
-
-.fileview-filename-container .fileStatus.warning {
-  background: #DD3;
-  border-radius: 2px;
-  position: absolute;
-  top: 2px;
-  right: 1px;
-  height: 16px;
-  width: 4px;
-}
-
-.fileview-filename-container .menu {
-  opacity: 0;
-  position: absolute;
-  right: 0;
-  width: 15px;
-}
-
-.fileview-filename-container .menu.open {
-  opacity: 1;
-}
-
-.fileview-filename-container .filename {
-  font-family: Helvetica, Sans-serif;
-  font-size: 13px;
-  overflow: hidden;
-  position: absolute;
-  top: 1px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  width: 100%;
-}
-
-.fileview-filename-container:hover .filename {
-  
-}
-
-.ace_gutter-cell {
-  color: #aaa;
-}
-
-#splitview {
-  display: flex;
-  height: 100%;
-  width: 100%;
-}
-
-#fileViewArea {
-  position: relative;
-  width: 300px;
-}
-
-#fileViewArea .listview-container {
-  bottom: 0;
-  left: 0;
-  overflow-x: auto;
-  overflow-y: auto;
-  position: absolute;
-  right: 0;
-  top: 0;
-}
-
-#fileViewArea .listview-dragover {
-  bottom: 0;
-  left: 0;
-  pointer-events: none;
-  position: absolute;
-  right: 0;
-  top: 0;
-}
-
-#fileViewArea .listview-dragover.listview-dragover-active {
-  border: 2px solid #aaf;
-}
-
-#editorArea {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
-#file-item-context-menu {
-  top: 0;
-  left: 0;
-  position: fixed;
-  z-index: 100;
-  display: none;
-}
-
-#file-item-context-menu.open {
-  display: block;
-}
-
-#file-item-context-menu .backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0);
-}
-
-#editedFilename {
-  color: #ccc;
-  display: inline-block;
-  margin-right: 10px;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: middle;
-  white-space: nowrap;
-}
-
-#editedFilename.hidden {
-  opacity: 0;
-}
-
-/** Dialog Stuff */
-.spark-overlay-scale-slideup {
-  top: 72px;
-  left: 50%;
-  width: 512px;
-  margin-left: -256px;
-}
-
-.spark-overlay-scale-slideup input {
-  width: 100%;
-}
-
-#deleteDialog, #renameDialog, #gitCloneDialog, #gitBranchDialog {
-  width: 412px;
-}
-
-.spark-overlay-scale-slideup {
-  box-sizing: border-box;
-  -moz-box-sizing: border-box;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 13px;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  overflow: hidden;
-  background: white;
-  padding:30px 42px;
-  outline: 1px solid rgba(0,0,0,0.2);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
-}
-
-.ace_gutter-cell.ace_error {
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAMCAYAAABSgIzaAAAACXBIWXMAAAsTAAALEwEAmpwYAAAKT2lDQ1BQaG90b3Nob3AgSUNDIHByb2ZpbGUAAHjanVNnVFPpFj333vRCS4iAlEtvUhUIIFJCi4AUkSYqIQkQSoghodkVUcERRUUEG8igiAOOjoCMFVEsDIoK2AfkIaKOg6OIisr74Xuja9a89+bN/rXXPues852zzwfACAyWSDNRNYAMqUIeEeCDx8TG4eQuQIEKJHAAEAizZCFz/SMBAPh+PDwrIsAHvgABeNMLCADATZvAMByH/w/qQplcAYCEAcB0kThLCIAUAEB6jkKmAEBGAYCdmCZTAKAEAGDLY2LjAFAtAGAnf+bTAICd+Jl7AQBblCEVAaCRACATZYhEAGg7AKzPVopFAFgwABRmS8Q5ANgtADBJV2ZIALC3AMDOEAuyAAgMADBRiIUpAAR7AGDIIyN4AISZABRG8lc88SuuEOcqAAB4mbI8uSQ5RYFbCC1xB1dXLh4ozkkXKxQ2YQJhmkAuwnmZGTKBNA/g88wAAKCRFRHgg/P9eM4Ors7ONo62Dl8t6r8G/yJiYuP+5c+rcEAAAOF0ftH+LC+zGoA7BoBt/qIl7gRoXgugdfeLZrIPQLUAoOnaV/Nw+H48PEWhkLnZ2eXk5NhKxEJbYcpXff5nwl/AV/1s+X48/Pf14L7iJIEyXYFHBPjgwsz0TKUcz5IJhGLc5o9H/LcL//wd0yLESWK5WCoU41EScY5EmozzMqUiiUKSKcUl0v9k4t8s+wM+3zUAsGo+AXuRLahdYwP2SycQWHTA4vcAAPK7b8HUKAgDgGiD4c93/+8//UegJQCAZkmScQAAXkQkLlTKsz/HCAAARKCBKrBBG/TBGCzABhzBBdzBC/xgNoRCJMTCQhBCCmSAHHJgKayCQiiGzbAdKmAv1EAdNMBRaIaTcA4uwlW4Dj1wD/phCJ7BKLyBCQRByAgTYSHaiAFiilgjjggXmYX4IcFIBBKLJCDJiBRRIkuRNUgxUopUIFVIHfI9cgI5h1xGupE7yAAygvyGvEcxlIGyUT3UDLVDuag3GoRGogvQZHQxmo8WoJvQcrQaPYw2oefQq2gP2o8+Q8cwwOgYBzPEbDAuxsNCsTgsCZNjy7EirAyrxhqwVqwDu4n1Y8+xdwQSgUXACTYEd0IgYR5BSFhMWE7YSKggHCQ0EdoJNwkDhFHCJyKTqEu0JroR+cQYYjIxh1hILCPWEo8TLxB7iEPENyQSiUMyJ7mQAkmxpFTSEtJG0m5SI+ksqZs0SBojk8naZGuyBzmULCAryIXkneTD5DPkG+Qh8lsKnWJAcaT4U+IoUspqShnlEOU05QZlmDJBVaOaUt2ooVQRNY9aQq2htlKvUYeoEzR1mjnNgxZJS6WtopXTGmgXaPdpr+h0uhHdlR5Ol9BX0svpR+iX6AP0dwwNhhWDx4hnKBmbGAcYZxl3GK+YTKYZ04sZx1QwNzHrmOeZD5lvVVgqtip8FZHKCpVKlSaVGyovVKmqpqreqgtV81XLVI+pXlN9rkZVM1PjqQnUlqtVqp1Q61MbU2epO6iHqmeob1Q/pH5Z/YkGWcNMw09DpFGgsV/jvMYgC2MZs3gsIWsNq4Z1gTXEJrHN2Xx2KruY/R27iz2qqaE5QzNKM1ezUvOUZj8H45hx+Jx0TgnnKKeX836K3hTvKeIpG6Y0TLkxZVxrqpaXllirSKtRq0frvTau7aedpr1Fu1n7gQ5Bx0onXCdHZ4/OBZ3nU9lT3acKpxZNPTr1ri6qa6UbobtEd79up+6Ynr5egJ5Mb6feeb3n+hx9L/1U/W36p/VHDFgGswwkBtsMzhg8xTVxbzwdL8fb8VFDXcNAQ6VhlWGX4YSRudE8o9VGjUYPjGnGXOMk423GbcajJgYmISZLTepN7ppSTbmmKaY7TDtMx83MzaLN1pk1mz0x1zLnm+eb15vft2BaeFostqi2uGVJsuRaplnutrxuhVo5WaVYVVpds0atna0l1rutu6cRp7lOk06rntZnw7Dxtsm2qbcZsOXYBtuutm22fWFnYhdnt8Wuw+6TvZN9un2N/T0HDYfZDqsdWh1+c7RyFDpWOt6azpzuP33F9JbpL2dYzxDP2DPjthPLKcRpnVOb00dnF2e5c4PziIuJS4LLLpc+Lpsbxt3IveRKdPVxXeF60vWdm7Obwu2o26/uNu5p7ofcn8w0nymeWTNz0MPIQ+BR5dE/C5+VMGvfrH5PQ0+BZ7XnIy9jL5FXrdewt6V3qvdh7xc+9j5yn+M+4zw33jLeWV/MN8C3yLfLT8Nvnl+F30N/I/9k/3r/0QCngCUBZwOJgUGBWwL7+Hp8Ib+OPzrbZfay2e1BjKC5QRVBj4KtguXBrSFoyOyQrSH355jOkc5pDoVQfujW0Adh5mGLw34MJ4WHhVeGP45wiFga0TGXNXfR3ENz30T6RJZE3ptnMU85ry1KNSo+qi5qPNo3ujS6P8YuZlnM1VidWElsSxw5LiquNm5svt/87fOH4p3iC+N7F5gvyF1weaHOwvSFpxapLhIsOpZATIhOOJTwQRAqqBaMJfITdyWOCnnCHcJnIi/RNtGI2ENcKh5O8kgqTXqS7JG8NXkkxTOlLOW5hCepkLxMDUzdmzqeFpp2IG0yPTq9MYOSkZBxQqohTZO2Z+pn5mZ2y6xlhbL+xW6Lty8elQfJa7OQrAVZLQq2QqboVFoo1yoHsmdlV2a/zYnKOZarnivN7cyzytuQN5zvn//tEsIS4ZK2pYZLVy0dWOa9rGo5sjxxedsK4xUFK4ZWBqw8uIq2Km3VT6vtV5eufr0mek1rgV7ByoLBtQFr6wtVCuWFfevc1+1dT1gvWd+1YfqGnRs+FYmKrhTbF5cVf9go3HjlG4dvyr+Z3JS0qavEuWTPZtJm6ebeLZ5bDpaql+aXDm4N2dq0Dd9WtO319kXbL5fNKNu7g7ZDuaO/PLi8ZafJzs07P1SkVPRU+lQ27tLdtWHX+G7R7ht7vPY07NXbW7z3/T7JvttVAVVN1WbVZftJ+7P3P66Jqun4lvttXa1ObXHtxwPSA/0HIw6217nU1R3SPVRSj9Yr60cOxx++/p3vdy0NNg1VjZzG4iNwRHnk6fcJ3/ceDTradox7rOEH0x92HWcdL2pCmvKaRptTmvtbYlu6T8w+0dbq3nr8R9sfD5w0PFl5SvNUyWna6YLTk2fyz4ydlZ19fi753GDborZ752PO32oPb++6EHTh0kX/i+c7vDvOXPK4dPKy2+UTV7hXmq86X23qdOo8/pPTT8e7nLuarrlca7nuer21e2b36RueN87d9L158Rb/1tWeOT3dvfN6b/fF9/XfFt1+cif9zsu72Xcn7q28T7xf9EDtQdlD3YfVP1v+3Njv3H9qwHeg89HcR/cGhYPP/pH1jw9DBY+Zj8uGDYbrnjg+OTniP3L96fynQ89kzyaeF/6i/suuFxYvfvjV69fO0ZjRoZfyl5O/bXyl/erA6xmv28bCxh6+yXgzMV70VvvtwXfcdx3vo98PT+R8IH8o/2j5sfVT0Kf7kxmTk/8EA5jz/GMzLdsAAAAgY0hSTQAAeiUAAICDAAD5/wAAgOkAAHUwAADqYAAAOpgAABdvkl/FRgAAANhJREFUeNqM0sFJA0EUxvHfhAVrUFg78LagYMghYFKBiB1Yg9qDJw9pwCISlBw8JLCnNKAESQrQg5DDehnCYwkmHwwzfO/95xsek5qm4eJEVgcPuEWZvS+84Ak/YLaSAlhgiku79Y4+NmYrnWwWeI1Qmq+l+TqCXbzl3i14j5796uIxgjcO13UEy1bx9x+wjGBqFY/2xRZ5/8BZ8FNdnebjps18xsRRu1rVS1W93BU2iuAzJgcMZpJ7t0+FAca4gub8uA2NMYxfTBjQAHdY4DuvRfaG8Za/AQDr8C3gEhoDQgAAAABJRU5ErkJggg==");
-}
-
-.ace_gutter-cell.ace_warning {
-  background-image: url("data:image/png;base64,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");
-}
-
-.ace_gutter-cell.ace_info {
-  background-image: url("data:image/png;base64,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");
-}
-
-#activitySpinner {
-  opacity: 1;
-  font-size: 18pt;
-  vertical-align: middle;
-  color: #777;
-}
-
-/* TODO(ussuri): None of these worked. Fix.
-.plus-minus-container {
-  display: flex;
-}
-
-.plus-minus-spacer {
-  flex: 1;
-}
-
-.plus-minus {
-  margin: 0;
-}
-*/
+      @import url("spark_polymer_ui.css");
     </style>
 
-    <spark-toolbar id="toolbar" color="white" lightdom>
-      <spark-icon-button id="openFile" tooltip="Open File..." src="images/open.png">
-      </spark-icon-button>
-      <spark-icon-button id="newFile" tooltip="New File..." src="images/add.png">
-      </spark-icon-button>
+    <spark-toolbar id="toolbar" lightdom>
+      <spark-button id="gitClone" small primary>Git Clone...</spark-button>
+      <spark-button id="newProject" small>New Project...</spark-button>
+      <spark-button id="runButton" small><i class="fa fa-play"></i> Run</spark-button>
 
-      <span id="saveStatus"></span>
+      <spark-status id="sparkStatus"></spark-status>
+      
+      <span id="saveStatus" class="titleFont"></span>
 
-      <div id="toolbarRight">
-        <span id="editedFilename"></span>
-        <i id="activitySpinner" class="fa fa-spinner fa-spin"></i>
-
+      <div id="toolbarRight" class="titleFont">
         <spark-menu-button id="hotdogMenuNew"
             src="images/menu.png"
             responsive="true"
-            selected="1"
+            selected="0"
             valueattr="action-id"
             valign="right"
             on-activate={{onMenuSelected}}>
@@ -258,36 +47,18 @@
           </spark-menu-item>
           <spark-menu-item action-id="folder-open" iconsize=0 label="Open Folder...">
           </spark-menu-item>
-          <spark-menu-item id="changeTheme" iconsize=0>
-            <a><span></span></a>
-            <span class="plus-minus-container">
-              <label class="plus-minus-spacer"></label>
-              <spark-button class="plus-minus" on-click="{{onThemeMinus}}">
-                <strong>-</strong>
-              </spark-button>
-              <spark-button class="plus-minus" on-click="{{onThemePlus}}">
-                <strong>+</strong>
-              </spark-button>
-            </span>
+          <spark-menu-item action-id="project-new" iconsize=0 label="New Project...">
           </spark-menu-item>
-          <spark-menu-item id="changeKeys" iconsize=0>
-            <a><span></span></a>
-            <span class="plus-minus-container">
-              <label class="plus-minus-spacer"></label>
-              <spark-button class="plus-minus" on-click="{{onKeysMinus}}">
-                <strong>-</strong>
-              </spark-button>
-              <spark-button class="plus-minus" on-click="{{onKeysPlus}}">
-                <strong>+</strong>
-              </spark-button>
-            </span>
-          </spark-menu-item>
-          <spark-menu-item action-id="run-tests" iconsize=0 label="Run Tests">
-          </spark-menu-item>
+          <!-- TODO: separator -->
           <spark-menu-item action-id="git-clone" iconsize=0 label="Git Clone...">
           </spark-menu-item>
-          <spark-menu-item action-id="git-branch" iconsize=0 label="Git Branch...">
+          <!-- TODO: separator -->
+          <spark-menu-item action-id="settings" iconsize=0 label="Settings...">
           </spark-menu-item>
+          <!-- TODO: separator -->
+          <spark-menu-item action-id="run-tests" iconsize=0 label="Run Tests">
+          </spark-menu-item>
+          <!-- TODO: separator -->
           <spark-menu-item action-id="help-about" iconsize=0 label="About Spark">
           </spark-menu-item>
         </spark-menu-button>
@@ -323,8 +94,7 @@
         <spark-button overlay-toggle data-dismiss="modal">
           Cancel
         </spark-button>
-        <spark-button id="deleteOkButton" overlay-toggle primary focused
-            data-dismiss="modal">
+        <spark-button overlay-toggle primary focused data-dismiss="modal">
           Delete
         </spark-button>
       </div>
@@ -333,115 +103,206 @@
     <!-- Rename File dialog -->
     <spark-overlay id="renameDialog" class="spark-overlay-scale-slideup">
       <div class="modal-body">
-        <p>
-          File name: <input id="renameFileName" type="text" focused>
-        </p>
+        <div class="form-group">
+          <label for="renameFileName">New name</label>
+          <input id="renameFileName" type="text" class="form-control" focused>
+        </div>
       </div>
       <div class="modal-footer">
         <spark-button overlay-toggle data-dismiss="modal">
           Cancel
         </spark-button>
-        <spark-button id="renameOkButton" overlay-toggle primary
-            data-dismiss="modal">
+        <spark-button overlay-toggle primary data-dismiss="modal">
           Rename
         </spark-button>
       </div>
     </spark-overlay>
-    
-     <!-- New File dialog -->
-     <spark-overlay id="fileNewDialog" class="spark-overlay-scale-slideup">
-       <div class="modal-body">
-         <p>
-           File name: <input id="fileNewName" type="text" focused>
-         </p>
-       </div>
-       <div class="modal-footer">
-         <spark-button overlay-toggle data-dismiss="modal">
-           Cancel
-         </spark-button>
-         <spark-button id="fileNewOkButton" overlay-toggle primary
-             data-dismiss="modal">
-           Create
-         </spark-button>
-       </div>
-     </spark-overlay>    
-     
-     <!-- New Folder dialog -->
-    <spark-overlay id="folderNewDialog" class="spark-overlay-scale-slideup">
+
+    <!-- New File dialog -->
+    <spark-overlay id="fileNewDialog" class="spark-overlay-scale-slideup">
       <div class="modal-body">
-        <p>
-          Folder name: <input id="folderName" type="text" focused>
-        </p>
+        <div class="form-group">
+          <label for="fileName">New file name</label>
+          <input id="fileName" type="text" class="form-control" focused>
+        </div>
       </div>
       <div class="modal-footer">
-        <spark-button data-dismiss="modal">
+        <spark-button overlay-toggle data-dismiss="modal">
           Cancel
         </spark-button>
-        <spark-button id="folderNewOkButton" primary
-            data-dismiss="modal">Create</spark-button>
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Create
+        </spark-button>
+      </div>
+    </spark-overlay>
+
+    <!-- New Folder dialog -->
+    <spark-overlay id="folderNewDialog" class="spark-overlay-scale-slideup">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="folderName">New folder name</label>
+          <input id="folderName" type="text" class="form-control" focused>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <spark-button overlay-toggle data-dismiss="modal">
+          Cancel
+        </spark-button>
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Create
+        </spark-button>
+      </div>
+    </spark-overlay>
+
+    <!-- New Project dialog -->
+    <spark-overlay id="newProjectDialog" class="spark-overlay-scale-slideup">
+      <div class="modal-header">
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">New Project</h4>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="name">Project name</label>
+          <input id="name" type="text" class="form-control" focused>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <spark-button overlay-toggle data-dismiss="modal">
+          Cancel
+        </spark-button>
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Create
+        </spark-button>
       </div>
     </spark-overlay>
 
     <!-- Git Clone dialog -->
     <spark-modal id="gitCloneDialog" class="spark-overlay-scale-slideup">
       <div class="modal-header">
-        <spark-button overlay-toggle class="close" data-dismiss="modal"
-            aria-hidden="true">&times;</spark-button>
-        <h4 class="modal-title">New Git Project</h4>
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">Clone Git Project</h4>
       </div>
       <div class="modal-body">
-        Project Name: <input id="gitProjectName" type="text" focused><br/><br/>
-        Repository URL: <input id="gitRepoUrl" type="text">
+        <div class="form-group">
+          <label for="gitRepoUrl">Repository URL</label>
+          <input id="gitRepoUrl" type="text" class="form-control" 
+              placeholder="https://github.com/foo/bar.git" focused>
+        </div>
       </div>
       <div class="modal-footer">
         <spark-button overlay-toggle data-dismiss="modal">
           Cancel
         </spark-button>
-        <spark-button id="gitCloneButton" overlay-toggle primary
-          data-dismiss="modal">
+        <spark-button overlay-toggle primary data-dismiss="modal">
           Clone
         </spark-button>
       </div>
-    </spark-modal><!-- /.modal --> 
-    
-    <!-- Git Clone dialog -->
-    <spark-modal id="gitBranchDialog" class="spark-overlay-scale-slideup">
+    </spark-modal><!-- /.modal -->
+
+    <!-- Git Commit dialog -->
+    <spark-modal id="gitCommitDialog" class="spark-overlay-scale-slideup">
       <div class="modal-header">
-        <spark-button overlay-toggle class="close" data-dismiss="modal"
-            aria-hidden="true">&times;</spark-button>
-        <h4 class="modal-title">New Branch</h4>
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">Git Commit</h4>
       </div>
       <div class="modal-body">
-        New Branch Name: <input id="gitBranchName" type="text" focused><br/><br/>
+        <div class="form-group">
+          <label for="commitMessage">Commit message</label>
+          <textarea id="commitMessage" type="text" class="form-control"
+              rows="3" focused></textarea>
+          <span class="help-block">Enter a brief description of the changes.</span>
+        </div>
       </div>
       <div class="modal-footer">
         <spark-button overlay-toggle data-dismiss="modal">
           Cancel
         </spark-button>
-        <spark-button id="gitBranchButton" overlay-toggle primary
-          data-dismiss="modal">
-          Create branch
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Commit
         </spark-button>
       </div>
-    </spark-modal><!-- /.modal --> 
+    </spark-modal><!-- /.modal -->
+
+    <!-- Git Branch dialog -->
+    <spark-modal id="gitBranchDialog" class="spark-overlay-scale-slideup">
+      <div class="modal-header">
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">Create Branch</h4>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="gitBranchName">New branch name</label>
+          <input id="gitBranchName" type="text" class="form-control" focused>
+          <span class="help-block">Create a new git branch.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <spark-button overlay-toggle data-dismiss="modal">
+          Cancel
+        </spark-button>
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Create Branch
+        </spark-button>
+      </div>
+    </spark-modal><!-- /.modal -->
+
+    <!-- Git Checkout dialog -->
+    <spark-modal id="gitCheckoutDialog" class="spark-overlay-scale-slideup">
+      <div class="modal-header">
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">Git Checkout</h4>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="currentBranchName">Current branch</label>
+          <input id="currentBranchName" type="text" class="form-control" disabled>
+        </div>
+        <div class="form-group">
+          <label for="gitCheckout">Switch to branch</label>
+          <select id="gitCheckout" class="form-control"></select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <spark-button overlay-toggle data-dismiss="modal">
+          Cancel
+        </spark-button>
+        <spark-button overlay-toggle primary data-dismiss="modal">
+          Checkout
+        </spark-button>
+      </div>
+    </spark-modal><!-- /.modal -->
 
     <!-- About dialog -->
     <spark-modal id="aboutDialog" class="spark-overlay-scale-slideup">
       <div class="modal-header">
-        <spark-button overlay-toggle class="close" data-dismiss="modal"
-            aria-hidden="true">&times;</spark-button>
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
         <h4 class="modal-title">Spark</h4>
       </div>
       <div class="modal-body">
-        <dl>
-          <dt>A Chrome Apps based development environment</dt>
-          <dd>version <span id="aboutVersion"></span></dd>
-        </dl>
-        <div class="checkbox">
-          <label>
-            <input id="analyticsCheck" type="checkbox">
-              Allow Spark to collect anonymous usage statistics
-          </label>
+        <div class="form-group">
+          <span class="help-block">
+            A Chrome Apps based development environment (v<span id="aboutVersion"></span>)
+          </span>
+        </div>
+        <div class="form-group">
+	        <div class="checkbox">
+	          <label>
+	            <input id="analyticsCheck" type="checkbox">
+	                Allow Spark to collect anonymous usage statistics
+	          </label>
+	        </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -450,11 +311,53 @@
         </spark-button>
       </div>
     </spark-modal><!-- /.modal -->
-  </template>
 
-  <!-- This injects spark_polymer_ui.dart.precompiled.js in the deployed
-       code -->
-  <script src="spark_bootstrap.js" defer></script>
+    <!-- Setting dialog -->
+    <spark-modal id="settingsDialog" class="spark-overlay-scale-slideup">
+      <div class="modal-header">
+        <spark-button overlay-toggle class="close" data-dismiss="modal" aria-hidden="true">
+          &times;
+        </spark-button>
+        <h4 class="modal-title">Settings</h4>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+	        <div id="changeTheme">
+	          <label class="settings-title">Editor theme</label>
+            <div>
+		          <span class="settings-label"></span>
+		          <span class="plus-minus-container">
+		            <a href="#" id="themeMinus" class="plus-minus-button" 
+		                on-click="{{onThemeMinus}}"><i class="fa fa-caret-left"></i></a>
+		            <a href="#" id="themePlus" class="plus-minus-button"
+		                on-click="{{onThemePlus}}"><i class="fa fa-caret-right"></i></a>
+		          </span>
+		        </div>
+          </div>
+        </div>
+        <div class="form-group">
+	        <div id="changeKeys">
+	          <label class="settings-title">Key bindings</label>
+	          <div>
+		          <span class="settings-label"></span>
+		          <span class="plus-minus-container">
+		            <a href="#" id="keysMinus" class="plus-minus-button"
+		                on-click="{{onKeysMinus}}"><i class="fa fa-caret-left"></i></a>
+		            <a href="#" id="keysPlus" class="plus-minus-button"
+		                on-click="{{onKeysPlus}}"><i class="fa fa-caret-right"></i></a>
+		          </span>
+		        </div>
+	        </div>
+	      </div>
+      </div>
+      <div class="modal-footer">
+        <spark-button overlay-toggle primary autofocus data-dismiss="modal">
+          Close
+        </spark-button>
+      </div>
+    </spark-modal><!-- /.modal -->
+
+  </template>
 
   <script type="application/dart" src="spark_polymer_ui.dart"></script>
 </polymer-element>

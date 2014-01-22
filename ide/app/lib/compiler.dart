@@ -10,8 +10,8 @@ library spark.compiler;
 import 'dart:async';
 import 'dart:html' as html;
 
-import 'package:compiler/compiler/compiler.dart' as compiler;
-export 'package:compiler/compiler/compiler.dart' show Diagnostic;
+import 'package:compiler_unsupported/compiler.dart' as compiler;
+export 'package:compiler_unsupported/compiler.dart' show Diagnostic;
 
 import 'sdk.dart';
 
@@ -49,7 +49,7 @@ class Compiler {
     return new Future.value(new CompilerResult._());
   }
 
-  Future<CompilerResult> compile(/*chrome_gen.FileEntry*/ entry) {
+  Future<CompilerResult> compile(/*chrome.FileEntry*/ entry) {
     // TODO: implement
 
     return new Future.value(new CompilerResult._());
