@@ -4,6 +4,7 @@
 
 library spark_polymer;
 
+import 'dart:isolate';
 import 'dart:async';
 import 'dart:html';
 
@@ -21,6 +22,31 @@ import 'lib/actions.dart';
 import 'lib/jobs.dart';
 
 void main() {
+  SendPort sendPort;
+
+  ReceivePort receivePort = new ReceivePort();
+  receivePort.listen((msg) {
+    if (sendPort == null) {
+      sendPort = msg;
+    } else {
+      print('Received from isolate: $msg\n');
+    }
+  });
+
+  String workerUri = 'worker.dart';
+
+  int counter = 0;
+
+  /*%TRACE3*/ print("(4> 1/23/14): spawnUri!"); // TRACE%
+  Isolate.spawnUri(Uri.parse(workerUri), [], receivePort.sendPort).then((isolate) {
+    print('isolate spawned');
+    new Timer.periodic(const Duration(seconds: 1), (t) {
+      sendPort.send('From app: ${counter++}');
+    });
+  }).catchError((_){
+    /*%TRACE3*/ print("(4> 1/23/14): catchError!"); // TRACE%
+  });;
+
   isTestMode().then((testMode) {
     polymer.initPolymer().run(() {
       createSparkZone().runGuarded(() {

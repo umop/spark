@@ -40,6 +40,28 @@ import 'spark_model.dart';
 analytics.Tracker _analyticsTracker = new analytics.NullTracker();
 
 void main() {
+  SendPort sendPort;
+
+  ReceivePort receivePort = new ReceivePort();
+  receivePort.listen((msg) {
+    if (sendPort == null) {
+      sendPort = msg;
+    } else {
+      print('Received from isolate: $msg\n');
+    }
+  });
+
+  String workerUri = 'https://raw.github.com/sethladd/dart_worker_isolates_dart2js_test/master/web/worker.dart';
+
+  int counter = 0;
+
+  Isolate.spawnUri(Uri.parse(workerUri), [], receivePort.sendPort).then((isolate) {
+    print('isolate spawned');
+    new Timer.periodic(const Duration(seconds: 1), (t) {
+      sendPort.send('From app: ${counter++}');
+    });
+  });
+
   isTestMode().then((testMode) {
     createSparkZone().runGuarded(() {
       Spark spark = new Spark(testMode);
