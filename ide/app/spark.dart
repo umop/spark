@@ -12,6 +12,8 @@ import 'package:bootjack/bootjack.dart' as bootjack;
 import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:dquery/dquery.dart';
 import 'package:logging/logging.dart';
+
+// BUG(ussuri): https://github.com/dart-lang/spark/issues/500
 import 'packages/spark_widgets/spark_status/spark_status.dart';
 
 import 'lib/ace.dart';
@@ -1283,7 +1285,7 @@ class GitBranchAction extends SparkActionWithDialog implements ContextAction {
 class GitCommitAction extends SparkActionWithDialog implements ContextAction {
   ws.Project project;
   GitScmProjectOperations gitOperations;
-  InputElement _commitMessageElement;
+  TextAreaElement _commitMessageElement;
 
   GitCommitAction(Spark spark, Element dialog)
       : super(spark, "git-commit", "Git Commit…", dialog) {
