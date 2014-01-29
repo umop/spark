@@ -23,16 +23,17 @@ abstract class GitObject {
    * Constructs a GitObject of the given type. [content] can be of type [String]
    * or [Uint8List].
    */
-  static GitObject make(String sha, String type, content) {
+  static GitObject make(String sha, String type, content,
+                        [LooseObject rawObj]) {
     switch (type) {
-      case ObjectTypes.BLOB:
+      case ObjectTypes.BLOB_STR:
         return new BlobObject(sha, content);
-      case ObjectTypes.TREE:
+      case ObjectTypes.TREE_STR:
       case "Tree":
-        return new TreeObject(sha, content);
-      case ObjectTypes.COMMIT:
-        return new CommitObject(sha, content);
-      case ObjectTypes.TAG:
+        return new TreeObject(sha, content, rawObj);
+      case ObjectTypes.COMMIT_STR:
+        return new CommitObject(sha, content, rawObj);
+      case ObjectTypes.TAG_STR:
         return new TagObject(sha, content);
       default:
         throw new ArgumentError("Unsupported git object type: ${type}");
@@ -42,7 +43,7 @@ abstract class GitObject {
   GitObject([this._sha, this.data]);
 
   // The type of git object.
-  String _type;
+  String type;
   dynamic data;
   String _sha;
 
@@ -60,8 +61,6 @@ class TreeEntry {
 
   TreeEntry(this.name, this.sha, this.isBlob);
 }
-
-
 
 /**
  * Error thrown for a parse failure.
@@ -86,9 +85,12 @@ class ParseError extends Error {
 class TreeObject extends GitObject {
 
   List<TreeEntry> entries;
+  LooseObject rawObj;
 
-  TreeObject( [String sha, Uint8List data]) : super(sha, data) {
-    this._type = ObjectTypes.TREE;
+  TreeObject( [String sha, Uint8List data, LooseObject rawObj])
+      : super(sha, data) {
+    this.type = ObjectTypes.TREE_STR;
+    this.rawObj  = rawObj;
     _parse();
   }
 
@@ -130,7 +132,7 @@ class TreeObject extends GitObject {
 class BlobObject extends GitObject {
 
   BlobObject(String sha, String data) : super(sha, data) {
-    this._type = ObjectTypes.BLOB;
+    this.type = ObjectTypes.BLOB_STR;
   }
 }
 
@@ -157,9 +159,13 @@ class CommitObject extends GitObject {
   String _message;
   String treeSha;
 
-  CommitObject(String sha, var data) {
-    this._type = ObjectTypes.COMMIT;
+  // raw commit object. This is needed in building pack files.
+  LooseObject rawObj;
+
+  CommitObject(String sha, var data, [rawObj]) {
+    this.type = ObjectTypes.COMMIT_STR;
     this._sha = sha;
+    this.rawObj = rawObj;
 
     if (data is Uint8List) {
       this.data = UTF8.decode(data);
@@ -169,7 +175,6 @@ class CommitObject extends GitObject {
       // TODO: Clarify this exception.
       throw "Data is in incompatible format.";
     }
-
     _parseData();
   }
 
@@ -222,6 +227,20 @@ class CommitObject extends GitObject {
     str += _message;
     return str;
   }
+
+  /**
+   * Returns the commit object as a map for easy advanced formatting instead
+   * of toString().
+   */
+  Map<String, String> toMap() {
+    return {
+            "commit": _sha,
+            "author_name": author.name,
+            "author_email": author.email,
+            "date": author.date.toString(),
+            "message": _message
+           };
+  }
 }
 
 /**
@@ -229,20 +248,15 @@ class CommitObject extends GitObject {
  */
 class TagObject extends GitObject {
   TagObject(String sha, String data) : super(sha, data) {
-    this._type = ObjectTypes.TAG;
+    this.type = ObjectTypes.TAG_STR;
   }
 }
 
 /**
  * A loose git object.
  */
-class LooseObject {
-  int _size;
-  String _type;
-
-  // Represents either an ArrayBuffer or a string representation of byte
-  //stream.
-  dynamic data;
+class LooseObject extends GitObject {
+  int size;
 
   LooseObject(buf) {
     _parse(buf);
@@ -271,7 +285,18 @@ class LooseObject {
       this.data = buf.substring(i + 1, buf.length);
     }
     List<String> parts = header.split(' ');
-    this._type = parts[0];
-    this._size = int.parse(parts[1]);
+    this.type = parts[0];
+    this.size = int.parse(parts[1]);
   }
+}
+
+/**
+ * Encapsulates a git pack object.
+ */
+class PackedObject extends GitObject {
+  List<int> sha;
+  String baseSha;
+  int crc;
+  int offset;
+  int desiredOffset;
 }

@@ -8,11 +8,11 @@ import 'dart:async';
 import 'dart:html';
 import 'package:polymer/polymer.dart';
 
-import '../common/widget.dart';
+import '../common/spark_widget.dart';
 
 // Ported from Polymer Javascript to Dart code.
 @CustomTag("spark-overlay")
-class SparkOverlay extends Widget {
+class SparkOverlay extends SparkWidget {
   // TODO(sorvell): need keyhelper component.
   static final int ESCAPE_KEY = 27;
 
@@ -230,17 +230,19 @@ class SparkOverlay extends Widget {
   // scrim.
   void captureHandler(MouseEvent e) {
     // TODO(terry): Hack to work around lightdom or event.path not yet working.
-    if (!autoCloseDisabled && !pointInOverlay(this, e.client)) {
+    if (!isPointInOverlay(e.client)) {
       // TODO(terry): How to cancel the event e.cancelable = true;
       e.stopImmediatePropagation();
       e.preventDefault();
 
-      autoCloseTask = new Timer(Duration.ZERO, () { opened = false; });
+      if (!autoCloseDisabled) {
+        autoCloseTask = new Timer(Duration.ZERO, () { opened = false; });
+      }
     }
   }
 
-  bool pointInOverlay(SparkOverlay overlay, Point xyGlobal) {
-    return overlay.offset.containsPoint(xyGlobal);
+  bool isPointInOverlay(Point xyGlobal) {
+    return super.getBoundingClientRect().containsPoint(xyGlobal);
   }
 
   void keydownHandler(KeyboardEvent e) {

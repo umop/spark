@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:grinder/grinder.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
+import 'package:polymer/builder.dart' as polymer;
 
 import 'webstore_client.dart';
 
@@ -34,12 +35,15 @@ void main([List<String> args]) {
   defineTask('mode-notest', taskFunction: (c) => _changeMode(useTestMode: false));
   defineTask('mode-test', taskFunction: (c) => _changeMode(useTestMode: true));
 
+  defineTask('lint', taskFunction: lint, depends: ['setup']);
+
   defineTask('compile', taskFunction: compile, depends : ['setup']);
-  defineTask('deploy', taskFunction: deploy, depends : ['setup']);
+  defineTask('deploy', taskFunction: deploy, depends : ['lint']);
 
   defineTask('docs', taskFunction: docs, depends : ['setup']);
   defineTask('stats', taskFunction: stats);
   defineTask('archive', taskFunction: archive, depends : ['mode-notest', 'deploy']);
+  defineTask('createSdk', taskFunction: createSdk);
 
   // For now, we won't be building the webstore version from Windows.
   if (!Platform.isWindows) {
@@ -68,13 +72,18 @@ void setup(GrinderContext context) {
   PubTools pub = new PubTools();
   pub.get(context);
 
-  _populateSdk(context);
-
   // copy from ./packages to ./app/packages
   copyDirectory(getDir('packages'), getDir('app/packages'), context);
 
   BUILD_DIR.createSync();
   DIST_DIR.createSync();
+}
+
+/**
+ * Runt Polymer lint on the Polymer entry point.
+ */
+void lint(context) {
+  polymer.lint(entryPoints: ['app/spark_polymer.html']);
 }
 
 /**
@@ -237,6 +246,32 @@ void stats(GrinderContext context) {
 }
 
 /**
+ * Create the 'app/sdk/dart-sdk.bin' file from the current Dart SDK.
+ */
+void createSdk(GrinderContext context) {
+  Directory srcSdkDir = sdkDir;
+  Directory destSdkDir = new Directory('app/sdk');
+
+  destSdkDir.createSync();
+
+  File versionFile = joinFile(srcSdkDir, ['version']);
+  File destArchiveFile = joinFile(destSdkDir, ['dart-sdk.bin']);
+
+  // copy files over
+  context.log('copying SDK');
+  copyDirectory(joinDir(srcSdkDir, ['lib']), joinDir(destSdkDir, ['lib']), context);
+
+  // Get rid of some big directories we don't use.
+  _delete('app/sdk/lib/_internal/compiler', context);
+  _delete('app/sdk/lib/_internal/dartdoc', context);
+
+  context.log('creating SDK archive');
+  _createSdkArchive(versionFile, joinDir(destSdkDir, ['lib']), destArchiveFile);
+
+  deleteEntity(joinDir(destSdkDir, ['lib']), context);
+}
+
+/**
  * Delete all generated artifacts.
  */
 void clean(GrinderContext context) {
@@ -314,8 +349,7 @@ void _polymerDeploy(GrinderContext context, Directory sourceDir, Directory destD
   runDartScript(context, 'packages/polymer/deploy.dart',
       arguments: ['--out', '../../${destDir.path}'],
       packageRoot: 'packages',
-      workingDirectory: sourceDir.path,
-      vmNewGenHeapMB: 128, vmOldGenHeapMB: 4096);
+      workingDirectory: sourceDir.path);
 }
 
 void _dart2jsCompile(GrinderContext context, Directory target, String filePath,
@@ -496,49 +530,6 @@ void _removePackagesLinks(GrinderContext context, Directory target) {
       _removePackagesLinks(context, entity);
     }
   });
-}
-
-/**
- * Populate the 'app/sdk' directory from the current Dart SDK.
- */
-void _populateSdk(GrinderContext context) {
-  Directory srcSdkDir = sdkDir;
-  Directory destSdkDir = new Directory('app/sdk');
-
-  destSdkDir.createSync();
-
-  File versionFile = joinFile(srcSdkDir, ['version']);
-  File destArchiveFile = joinFile(destSdkDir, ['dart-sdk.bin']);
-
-  FileSet srcVer = new FileSet.fromFile(versionFile);
-  FileSet destArchive = new FileSet.fromFile(destArchiveFile);
-
-  Directory compilerDir = new Directory('packages/compiler');
-
-  // Check the timestamp of the SDK archive to see if things are up-to-date.
-  if (!destArchive.upToDate(srcVer) || !compilerDir.existsSync()) {
-    // copy files over
-    context.log('copying SDK');
-    copyDirectory(joinDir(srcSdkDir, ['lib']), joinDir(destSdkDir, ['lib']), context);
-
-    // Create a synthetic package:compiler package in the packages directory.
-    // TODO(devoncarew): this would be much better as a standard pub package
-    compilerDir.createSync();
-
-    _delete('packages/compiler/compiler', context);
-    _delete('packages/compiler/lib', context);
-    _delete('app/sdk/lib/_internal/compiler/samples', context);
-    copyDirectory(getDir('app/sdk/lib/_internal/compiler'), getDir('packages/compiler/compiler'), context);
-    _delete('app/sdk/lib/_internal/compiler', context);
-    copyFile(getFile('app/sdk/lib/_internal/libraries.dart'), getDir('packages/compiler'), context);
-    _delete('app/sdk/lib/_internal/pub', context);
-    _delete('app/sdk/lib/_internal/dartdoc', context);
-
-    context.log('creating SDK archive');
-    _createSdkArchive(versionFile, joinDir(destSdkDir, ['lib']), destArchiveFile);
-
-    deleteEntity(joinDir(destSdkDir, ['lib']), context);
-  }
 }
 
 /**

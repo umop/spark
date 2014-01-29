@@ -9,23 +9,27 @@ import 'dart:async';
 
 import 'package:polymer/polymer.dart';
 
-import '../common/widget.dart';
+import '../common/spark_widget.dart';
 
 typedef void SplitterUpdateFunction(int position);
 
 /// Implements the spark-splitter custom Polymer element.
 @CustomTag('spark-splitter')
-class SparkSplitter extends Widget {
+class SparkSplitter extends SparkWidget {
   /// Possible values are "left", "right", "up" and "down".
   /// The direction specifies:
   /// 1) whether the split is horizontal or vertical;
   /// 2) which sibling will be continuously auto-resized when the splitter is
   ///    dragged.
   @published String direction = 'left';
+  /// The split bar has a background image.
+  @published bool handle = false;
   /// Locks the split bar so it can't be dragged.
   @published bool locked = false;
   /// Get notified of position changes.
   @published SplitterUpdateFunction onUpdate;
+  // Get the thickness size of split bar.
+  @published int size = 6;
 
   /**
    * Return the current splitter location.
@@ -76,6 +80,8 @@ class SparkSplitter extends Widget {
   /// Triggered when the control is first displayed.
   @override
   void enteredView() {
+    super.enteredView();
+
     // TODO(sergeygs): Perhaps switch to using onDrag* instead of onMouse* once
     // support for drag-and-drop in shadow DOM is fixed. It is less important
     // here, because the element is not actually supposed to be dropped onto
@@ -94,6 +100,31 @@ class SparkSplitter extends Widget {
     _target =
         _isTargetNextSibling ? nextElementSibling : previousElementSibling;
     classes.toggle('horizontal', _isHorizontal);
+    _setThickness();
+    if (handle) {
+      _addBackgroundHandle();
+    }
+  }
+
+  void _setThickness() {
+    final sizeStr = '${size}px';
+    if (_isHorizontal) {
+      this.style.height = sizeStr;
+      this.style.width = "auto";
+    } else {
+      this.style.height = "auto";
+      this.style.width = sizeStr;
+    }
+  }
+
+  void _addBackgroundHandle() {
+    if (_isHorizontal) {
+      classes.add('horizontal-handle');
+      classes.remove('vertical-handle');
+    } else {
+      classes.remove('horizontal-handle');
+      classes.add('vertical-handle');
+    }
   }
 
   /// Cache the current size of the target.

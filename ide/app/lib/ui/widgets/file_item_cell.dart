@@ -14,17 +14,17 @@ import 'listview_cell.dart';
 import '../../workspace.dart';
 
 class FileItemCell implements ListViewCell {
-  Resource _resource;
+  final Resource resource;
   Element _element;
   bool _highlighted;
   bool acceptDrop;
 
-  FileItemCell(this._resource) {
+  FileItemCell(this.resource) {
     DocumentFragment template =
         (querySelector('#fileview-filename-template') as TemplateElement).content;
     DocumentFragment templateClone = template.clone(true);
     _element = templateClone.querySelector('.fileview-filename-container');
-    _element.querySelector('.filename').text = _resource.name;
+    fileNameElement.innerHtml = resource.name;
     acceptDrop = false;
     updateFileStatus();
   }
@@ -37,20 +37,33 @@ class FileItemCell implements ListViewCell {
 
   set highlighted(bool value) => _highlighted = value;
 
+  Element get fileNameElement => _element.querySelector('.nameField');
+
+  Element get fileInfoElement => _element.querySelector('.infoField');
+
   Element get fileStatusElement => _element.querySelector('.fileStatus');
 
   Element get gitStatusElement => _element.querySelector('.gitStatus');
+
+  void setFileInfo(String infoString) {
+    fileInfoElement.innerHtml = infoString;
+  }
 
   void updateFileStatus() {
     Element element = fileStatusElement;
     element.classes.removeAll(['warning', 'error']);
 
-    int severity = _resource.findMaxProblemSeverity();
+    int severity = resource.findMaxProblemSeverity();
 
     if (severity == Marker.SEVERITY_ERROR) {
       element.classes.add('error');
     } else if (severity == Marker.SEVERITY_WARNING) {
       element.classes.add('warning');
     }
+  }
+
+  void setGitStatus({bool dirty: false}) {
+    // TODO: Implement.
+
   }
 }

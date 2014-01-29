@@ -22,6 +22,7 @@ import 'widgets/treeview_cell.dart';
 import 'widgets/treeview_delegate.dart';
 import '../actions.dart';
 import '../preferences.dart' as preferences;
+import '../scm.dart';
 import '../workspace.dart';
 
 class FilesController implements TreeViewDelegate {
@@ -29,6 +30,8 @@ class FilesController implements TreeViewDelegate {
   TreeView _treeView;
   // Workspace that references all the resources.
   Workspace _workspace;
+  // The SCMManager is used to help us decorate files with their SCM status.
+  ScmManager _scmManager;
   // List of top-level resources.
   List<Resource> _files;
   // Implements callbacks required for the FilesController.
@@ -43,9 +46,11 @@ class FilesController implements TreeViewDelegate {
   StreamController<Resource> _selectionController = new StreamController.broadcast();
 
   FilesController(Workspace workspace,
+                  ScmManager scmManager,
                   FilesControllerDelegate delegate,
                   html.Element fileViewArea) {
     _workspace = workspace;
+    _scmManager = scmManager;
     _delegate = delegate;
     _files = [];
     _filesMap = {};
@@ -67,9 +72,8 @@ class FilesController implements TreeViewDelegate {
       }
     });
 
-    _workspace.onMarkerChange.listen((_) {
-      _processMarkerChange();
-    });
+    _workspace.onMarkerChange.listen((_) => _processMarkerChange());
+    _scmManager.onStatusChange.listen((_) => _processScmChange());
   }
 
   bool isFileSelected(Resource file) {
@@ -94,6 +98,7 @@ class FilesController implements TreeViewDelegate {
       _delegate.selectInEditor(file, forceOpen: forceOpen);
     }
     _selectionController.add(file);
+    _treeView.scrollIntoNode(file.path, html.ScrollAlignment.CENTER);
   }
 
   void selectFirstFile({bool forceOpen: false}) {
@@ -101,6 +106,16 @@ class FilesController implements TreeViewDelegate {
       return;
     }
     selectFile(_files[0], forceOpen: forceOpen);
+  }
+
+  void setFolderExpanded(Container resource) {
+    for (Container container in _collectParents(resource, [])) {
+      if (!_treeView.isNodeExpanded(container.path)) {
+        _treeView.setNodeExpanded(container.path, true);
+      }
+    }
+
+    _treeView.setNodeExpanded(resource.path, true);
   }
 
   /**
@@ -152,6 +167,7 @@ class FilesController implements TreeViewDelegate {
     if (resource is Folder) {
       cell.acceptDrop = true;
     }
+    _updateScmInfo(cell);
     return cell;
   }
 
@@ -488,10 +504,11 @@ class FilesController implements TreeViewDelegate {
 
   void _cacheChildren(String nodeUID) {
     if (_childrenCache[nodeUID] == null) {
-      _childrenCache[nodeUID] =
-          (_filesMap[nodeUID] as Container).getChildren().
-          map((Resource resource) => resource.path).toList();
-      _childrenCache[nodeUID].sort((String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      Container container = _filesMap[nodeUID];
+      _childrenCache[nodeUID] = container.getChildren().
+          where(_showResource).map((r) => r.path).toList();
+      _childrenCache[nodeUID].sort(
+          (String a, String b) => a.toLowerCase().compareTo(b.toLowerCase()));
     }
   }
 
@@ -538,7 +555,7 @@ class FilesController implements TreeViewDelegate {
    * Event handler for workspace events.
    */
   void _processEvents(ResourceChangeEvent event) {
-    event.changes.forEach((change) {
+    event.changes.where((d) => _showResource(d.resource)).forEach((change) {
       if (change.type == EventType.ADD) {
         var resource = change.resource;
         if (resource.isTopLevel) {
@@ -562,7 +579,18 @@ class FilesController implements TreeViewDelegate {
         _recursiveAddResource(resource);
       }
     });
+
     _reloadData();
+  }
+
+  /**
+   * Returns whether the given resource should be filtered from the Files view.
+   */
+  bool _showResource(Resource resource) {
+    if (resource is Folder && resource.name == '.git') {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -579,11 +607,42 @@ class FilesController implements TreeViewDelegate {
     }
   }
 
+  void _processScmChange() {
+    for (String uid in _filesMap.keys) {
+      TreeViewCell treeViewCell = _treeView.getTreeViewCellForUID(uid);
+      if (treeViewCell != null) {
+        _updateScmInfo(treeViewCell.embeddedCell);
+      }
+    }
+  }
+
+  void _updateScmInfo(FileItemCell fileItemCell) {
+    Resource resource = fileItemCell.resource;
+    ScmProjectOperations scmOperations =
+        _scmManager.getScmOperationsFor(resource.project);
+
+    if (scmOperations != null) {
+      if (resource is Project) {
+        scmOperations.getBranchName().then((branchName) {
+          final String repoIcon = '<i class="fa fa-code-fork"></i>';
+          if (branchName == null) branchName = '';
+          fileItemCell.setFileInfo('${repoIcon} [${branchName}]');
+        });
+      } else {
+        FileStatus status = scmOperations.getFileStatus(resource);
+        // TODO: We'll need to add a few more status states.
+        fileItemCell.setGitStatus(dirty: (status == FileStatus.DIRTY));
+      }
+    }
+  }
+
   void _recursiveAddResource(Resource resource) {
     _filesMap[resource.path] = resource;
     if (resource is Container) {
       resource.getChildren().forEach((child) {
-        _recursiveAddResource(child);
+        if (_showResource(child)) {
+          _recursiveAddResource(child);
+        }
       });
     }
   }

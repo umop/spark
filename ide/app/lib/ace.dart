@@ -13,6 +13,7 @@ import 'dart:js' as js;
 import 'dart:math' as math;
 
 import 'package:ace/ace.dart' as ace;
+import 'package:ace/proxy.dart';
 import 'package:path/path.dart' as path;
 
 import 'workspace.dart' as workspace;
@@ -90,12 +91,15 @@ class AceManager {
 
   workspace.Marker _currentMarker;
 
+  StreamSubscription<ace.FoldChangeEvent> _foldListenerSubscription;
+
   static bool get available => js.context['ace'] != null;
 
   StreamSubscription _markerSubscription;
   workspace.File currentFile;
 
   AceManager(this.parentElement) {
+    ace.implementation = ACE_PROXY_IMPLEMENTATION;
     _aceEditor = ace.edit(parentElement);
     _aceEditor.renderer.fixedWidthGutter = true;
     _aceEditor.highlightActiveLine = false;
@@ -124,25 +128,54 @@ class AceManager {
     return null;
   }
 
+  String _formatAnnotationItemText(String text, [String type]) {
+    String labelHtml = "";
+    if (type != null) {
+      String typeText = type.substring(0, 1).toUpperCase() + type.substring(1);
+      labelHtml = "<span class=ace_gutter-tooltip-label-$type>$typeText: </span>";
+    }
+    return "$labelHtml$text";
+  }
+
   void setMarkers(List<workspace.Marker> markers) {
     List<ace.Annotation> annotations = [];
     int numberLines = currentSession.screenLength;
 
     _recreateMiniMap();
+    Map<int, ace.Annotation> annotationByRow = new Map<int, ace.Annotation>();
 
     for (workspace.Marker marker in markers) {
       String annotationType = _convertMarkerSeverity(marker.severity);
-      var annotation = new ace.Annotation(
-          text: marker.message,
-          row: marker.lineNum - 1, // Ace uses 0-based lines.
+
+      // Style the marker with the annotation type.
+      String markerHtml = _formatAnnotationItemText(marker.message,
+          annotationType);
+
+      // Ace uses 0-based lines.
+      ace.Point charPoint = currentSession.document.indexToPosition(marker.charStart);
+      int aceRow = charPoint.row;
+      int aceColumn = charPoint.column;
+
+      // If there is an existing annotation, delete it and combine into one.
+      var existingAnnotation = annotationByRow[aceRow];
+      if (existingAnnotation != null) {
+        markerHtml = existingAnnotation.html
+            + "<div class=\"ace_gutter-tooltip-divider\"></div>$markerHtml";
+        annotations.remove(existingAnnotation);
+      }
+
+      ace.Annotation annotation = new ace.Annotation(
+          html: markerHtml,
+          row: aceRow,
           type: annotationType);
       annotations.add(annotation);
+      annotationByRow[aceRow] = annotation;
 
-      // TODO(ericarnold): This won't update on code folds.  Fix
       // TODO(ericarnold): This should also be based upon annotations so ace's
       //     immediate handling of deleting / adding lines gets used.
       double markerPos =
-          currentSession.documentToScreenRow(marker.lineNum, 0) / numberLines * 100.0;
+          currentSession.documentToScreenRow(marker.lineNum, aceColumn)
+          / numberLines * 100.0;
 
       html.Element minimapMarker = new html.Element.div();
       minimapMarker.classes.add("minimap-marker ${marker.severityDescription}");
@@ -152,7 +185,7 @@ class AceManager {
       _minimapElement.append(minimapMarker);
     }
 
-    currentSession.annotations = annotations;
+    currentSession.setAnnotations(annotations);
   }
 
   void selectNextMarker() {
@@ -189,14 +222,14 @@ class AceManager {
   void _selectMarker(workspace.Marker marker) {
     // TODO(ericarnold): Marker range should be selected, but we either need
     // Marker to include col info or we need a way to convert col to char-pos
-    _aceEditor.selection.setSelectionAnchor(
-        marker.lineNum, marker.charStart);
-    _aceEditor.selection.selectTo(marker.lineNum, marker.charEnd);
-    _aceEditor.selection.moveCursorTo(marker.lineNum, 0);
+    _aceEditor.gotoLine(marker.lineNum);
     _currentMarker = marker;
   }
 
   void _recreateMiniMap() {
+    if (_editorElement == null) {
+      return;
+    }
     html.Element scrollbarElement =
         _editorElement.getElementsByClassName("ace_scrollbar").first;
     if (scrollbarElement.style.right != "10px") {
@@ -272,6 +305,11 @@ class AceManager {
   ace.EditSession get currentSession => _aceEditor.session;
 
   void switchTo(ace.EditSession session, [workspace.File file]) {
+    if (_foldListenerSubscription != null) {
+      _foldListenerSubscription.cancel();
+      _foldListenerSubscription = null;
+    }
+
     if (session == null) {
       _aceEditor.session = ace.createEditSession('', new ace.Mode('ace/mode/text'));
       _aceEditor.readOnly = true;
@@ -281,6 +319,13 @@ class AceManager {
       if (_aceEditor.readOnly) {
         _aceEditor.readOnly = false;
       }
+
+      _foldListenerSubscription = currentSession.onChangeFold.listen((_) {
+        setMarkers(file.getMarkers());
+      });
+
+      // TODO(ericarnold): Markers aren't shown until file is edited.  Fix.
+      setMarkers(file.getMarkers());
     }
 
     // Setup the code completion options for the current file type.
@@ -288,9 +333,6 @@ class AceManager {
       currentFile = file;
       _aceEditor.setOption(
           'enableBasicAutocompletion', path.extension(file.name) != '.dart');
-
-      // TODO(ericarnold): Markers aren't shown until file is edited.  Fix.
-      setMarkers(currentFile.getMarkers());
 
       if (_markerSubscription == null) {
         _markerSubscription = file.workspace.onMarkerChange.listen(
@@ -353,7 +395,7 @@ class ThemeManager {
   }
 
   void _updateName(String name) {
-    _label.text = utils.capitalize(name.replaceAll('_', ' '));
+    _label.text = utils.toTitleCase(name.replaceAll('_', ' '));
   }
 }
 
@@ -393,6 +435,6 @@ class KeyBindingManager {
   }
 
   void _updateName(String name) {
-    _label.text = (name == null ? 'default' : utils.capitalize(name));
+    _label.text = (name == null ? 'Default' : utils.capitalize(name));
   }
 }

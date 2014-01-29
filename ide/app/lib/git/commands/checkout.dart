@@ -27,13 +27,14 @@ class Checkout {
    */
   static Future _cleanWorkingDir(chrome.DirectoryEntry root) {
     return FileOps.listFiles(root).then((List<chrome.DirectoryEntry> entries) {
-      return Future.forEach(entries, (chrome.DirectoryEntry entry) {
+      return Future.forEach(entries, (chrome.Entry entry) {
         if (entry.isDirectory) {
-           // Do not remove the .git directory.
-           if (entry.name == '.git') {
+          chrome.DirectoryEntry dirEntry = entry;
+          // Do not remove the .git directory.
+          if (entry.name == '.git') {
             return null;
           }
-          return entry.removeRecursively();
+          return dirEntry.removeRecursively();
         } else {
           return entry.remove();
         }
@@ -57,7 +58,7 @@ class Checkout {
           return Conditions.checkForUncommittedChanges(root, store).then(
               (GitConfig config) {
             return _cleanWorkingDir(root).then((_) {
-              return store.retrieveObject(branchSha, ObjectTypes.COMMIT).then(
+              return store.retrieveObject(branchSha, ObjectTypes.COMMIT_STR).then(
                   (CommitObject commit) {
                 return ObjectUtils.expandTree(root, store, commit.treeSha)
                     .then((_) {

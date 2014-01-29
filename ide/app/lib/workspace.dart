@@ -15,6 +15,8 @@ import 'dart:math' as math;
 import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:logging/logging.dart';
 
+import 'builder.dart';
+import 'jobs.dart';
 import 'preferences.dart';
 
 final Logger _logger = new Logger('spark.workspace');
@@ -24,11 +26,12 @@ final Logger _logger = new Logger('spark.workspace');
  * files that it contains are loose files; they do not have parent projects.
  */
 class Workspace implements Container {
-
   int _markersPauseCount = 0;
   List<MarkerDelta> _makerChangeList = [];
 
   Container _parent = null;
+
+  BuilderManager _builderManager;
 
   chrome.Entry get _entry => null;
   set _entry(chrome.Entry value) => null;
@@ -52,6 +55,12 @@ class Workspace implements Container {
 
   Future<Workspace> whenAvailable() => _whenAvailable.future;
   Future<Workspace> whenAvailableSyncFs() => _whenAvailableSyncFs.future;
+
+  BuilderManager get builderManager => _builderManager;
+
+  void createBuilderManager(JobManager jobManager) {
+    _builderManager = new BuilderManager(this, jobManager);
+  }
 
   String get name => null;
   String get path => '';
@@ -306,10 +315,6 @@ class Workspace implements Container {
           var file = new File(container, ent);
           container._localChildren.add(file);
         } else {
-          // We don't want to show .git folders to the user.
-          if (ent.name == '.git') {
-            continue;
-          }
           var folder = new Folder(container, ent);
           container._localChildren.add(folder);
           futures.add(_gatherChildren(folder));
@@ -463,7 +468,8 @@ abstract class Container extends Resource {
   List<Resource> getChildren() => _localChildren;
 
   List<Marker> getMarkers() {
-    return traverse().where((r) => r is File).expand((f) => f.getMarkers());
+    return traverse().where((r) => r is File)
+        .expand((f) => f.getMarkers()).toList();
   }
 
   void clearMarkers() {
@@ -684,6 +690,16 @@ class Project extends Folder {
     super(parent, entry);
 
   Project get project => this;
+
+  /**
+   * Check the files on disk for changes that we don't know about. Fire resource
+   * change events as necessary.
+   */
+  void refresh() {
+    // TODO: Implement.
+
+    print('Project.refresh(): ${name}');
+  }
 }
 
 /**
@@ -734,6 +750,14 @@ class ResourceChangeEvent {
   Iterable<File> get modifiedFiles => changes
       .where((delta) => !delta.isDelete && delta.resource is File)
       .map((delta) => delta.resource);
+
+  /**
+   * Returns an [Iterable] of the changed projects in this event.
+   */
+  Iterable<Project> get modifiedProjects => changes
+      .map((delta) => delta.resource.project)
+      .toSet()
+      .where((project) => project != null);
 }
 
 /**
