@@ -7,7 +7,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:isolate';
 
-import '../compiler.dart';
+import 'lib/compiler.dart';
 
 
 /**

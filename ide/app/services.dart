@@ -60,7 +60,7 @@ abstract class Service {
  * Defines a class which handles all isolate setup and communication
  */
 class IsolateHandler {
-  final String _workerPath = 'lib/services/services_impl.dart';
+  final String _workerPath = 'services_impl.dart';
 
   SendPort _sendPort;
   final ReceivePort _receivePort = new ReceivePort();
