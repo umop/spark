@@ -3,8 +3,12 @@
 // license that can be found in the LICENSE file.
 library spark.services;
 
-import 'dart:isolate';
+import 'dart:convert';
 import 'dart:async';
+import 'dart:isolate';
+
+import '../compiler.dart';
+
 
 /**
  * This is a separate application spawned by Spark (via Services) as an isolate
@@ -19,6 +23,7 @@ void main(List<String> args, SendPort sendPort) {
  */
 class ServicesIsolate {
   WorkerHandler _handler;
+  CompilerServiceImpl compiler;
 
   ServicesIsolate(SendPort sendPort) {
     _handler = new WorkerHandler(sendPort)
@@ -27,12 +32,44 @@ class ServicesIsolate {
 
   handleMessage(ActionEvent event) {
     // Service implementations:
-    switch(event.id) {
+    switch(event.serviceId) {
       case "ping":
-        _handler.sendResponse(event.id, 'pong: ${event.data}');
+        switch(event.actionId) {
+          case "ping":
+            _handler.sendResponse(
+                event.serviceId, "pong", event.data["message"]);
+            break;
+        }
+        break;
+
+      case "compiler":
+        switch(event.actionId) {
+          case "instantiate":
+            compiler = new CompilerServiceImpl()..onReady.listen((String state){
+              _handler.sendResponse(
+                  event.serviceId, event.actionId, {"state": state});
+            });
+            break;
+        }
         break;
     }
   }
+}
+
+class CompilerServiceImpl {
+  Compiler _compiler;
+
+  StreamController<String> _readyController =
+      new StreamController<String>.broadcast();
+
+  CompilerServiceImpl() {
+    Compiler.createCompiler().then((c) {
+      _compiler = c;
+      _readyController.add("ready");
+      _readyController.close();
+    });
+  }
+  Stream<String> get onReady => _readyController.stream;
 }
 
 /**
@@ -41,9 +78,10 @@ class ServicesIsolate {
 // TODO(ericarnold): Extend Event?
 // TODO(ericarnold): This should be shared between ServiceIsolate and Service.
 class ActionEvent {
-  String id;
+  String serviceId;
+  String actionId;
   Map data;
-  ActionEvent(this.id, this.data);
+  ActionEvent(this.serviceId, this.actionId, this.data);
 }
 
 /**
@@ -59,17 +97,22 @@ class WorkerHandler {
     _sendPort.send(receivePort.sendPort);
 
     receivePort.listen((arg) {
-      _messageStreamController.add(new ActionEvent(arg["id"], arg["data"]));
+      String data = arg["data"];
+      _messageStreamController.add(new ActionEvent(
+          arg["serviceId"], arg["actionId"], JSON.decode(data)));
     });
   }
 
   Stream<ActionEvent> get onMessage => _messageStreamController.stream;
 
-  void sendResponse(String id, String data) {
-    _sendPort.send({"id": id, "data": data});
+  void sendResponse(String serviceId, String actionId, Map data) {
+    _sendPort.send({
+        "serviceId": serviceId,
+        "actionId": actionId,
+        "data": JSON.encode(data)});
   }
 
-  void sendAction(String id, String data) {
+  void sendAction(String serviceId, String actionId, String data) {
     // TODO(ericarnold): Implement
   }
 }

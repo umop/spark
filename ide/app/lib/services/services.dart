@@ -4,6 +4,7 @@
 library spark.services;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
 
 /**
@@ -35,7 +36,7 @@ class PingService extends Service{
   String get serviceId => "ping";
 
   Future ping(String message) {
-    sendAction(message);
+    sendAction("ping", {"message": message});
   }
 }
 
@@ -50,8 +51,8 @@ abstract class Service {
 
   // TODO(ericarnold): This will need to return a future to complete when action
   // is done.
-  Future sendAction(String message) {
-    _isolateHandler.sendAction(serviceId, message);
+  Future sendAction(String actionId, Map message) {
+    _isolateHandler.sendAction(serviceId, JSON.encode(message));
   }
 }
 
@@ -93,11 +94,12 @@ class IsolateHandler {
   Stream get onWorkerReady => _readyController.stream;
 
   // TODO(ericarnold): Complete a future / stream.
-  Future sendAction(String id, [String data = ""]) {
-    _sendPort.send({"id": id, "data": data});
+  Future sendAction(String serviceId, String actionId, [String data = ""]) {
+    _sendPort.send(
+        {"serviceId": serviceId, "actionId": actionId, "data": data});
   }
 
-  void sendResponse(String id, String data) {
+  void sendResponse(String serviceId, String actionId, String data) {
     // TODO(ericarnold): Implement
   }
 }
