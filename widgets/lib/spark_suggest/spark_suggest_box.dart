@@ -13,15 +13,19 @@ import '../spark_overlay/spark_overlay.dart';
 import '../common/spark_widget.dart';
 
 /**
- * A single suggestion supplied by a [SuggestOracle]. Provides a [displayLabel]
+ * A single suggestion supplied by a [SuggestOracle]. Provides a [label]
  * and an [onSelected] callback. [onSelected] is called when the user chooses
  * `this` suggestion.
  */
 class Suggestion {
-  final String displayLabel;
+  final String label;
+  final String details;
+
   final Function onSelected;
 
-  Suggestion(this.displayLabel, {this.onSelected});
+  Suggestion(this.label, {this.details, this.onSelected});
+
+  bool get hasDetails => details != null && details.isNotEmpty;
 }
 
 /**
@@ -54,9 +58,6 @@ class SparkSuggestBox extends SparkWidget {
   @observable final suggestions = new ObservableList();
   /// Currently highlighted (but not yet selected) suggestion
   @observable int selectionIndex = -1;
-  /// Whether we're loading suggestions. `true` as long as we're subscribed to
-  /// the [oracle].
-  @observable bool isLoading;
 
   StreamSubscription _oracleSub;
 
@@ -117,7 +118,6 @@ class SparkSuggestBox extends SparkWidget {
   void suggest() {
     InputElement textBox = $['text-box'];
     _cleanupSubscriptions();
-    isLoading = true;
     _oracleSub = oracle.getSuggestions(textBox.value)
         .listen((List<Suggestion> update) {
           if (update != null && update.isNotEmpty) {
@@ -132,7 +132,6 @@ class SparkSuggestBox extends SparkWidget {
     if (_oracleSub != null) {
       _oracleSub.cancel();
       _oracleSub = null;
-      isLoading = false;
     }
   }
 

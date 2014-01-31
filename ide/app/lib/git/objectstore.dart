@@ -14,6 +14,7 @@ import 'dart:typed_data';
 import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:crypto/crypto.dart' as crypto;
 
+import 'config.dart';
 import 'file_operations.dart';
 import 'commands/index.dart';
 import 'object.dart';
@@ -39,32 +40,9 @@ class GitRef {
 
   GitRef(this.sha, this.name, [this.type, this.remote]);
 
-  getPktLine() => '${sha} ${head} ${name}';
+  String getPktLine() => '${sha} ${head} ${name}';
 
-  toString() => getPktLine();
-}
-
-class GitConfig {
-
-  String url;
-  String shallow;
-  Map<String, String> remoteHeads = {};
-  DateTime time;
-
-  dynamic _jsonObject;
-
-
-  GitConfig([String configStr]) {
-    if (configStr != null) {
-      // TODO(grv) : store and restore git config.
-      //_jsonObject = JSON.decode(configStr);
-    }
-  }
-
-  String toString() {
-    //TODO return Json Object string.
-    return "";
-  }
+  String toString() => getPktLine();
 }
 
 class PackEntry {
@@ -112,6 +90,8 @@ class ObjectStore {
 
   List<PackEntry> packs = [];
 
+  Config config;
+
   Index index;
 
   chrome.DirectoryEntry get root => _rootDir;
@@ -119,6 +99,7 @@ class ObjectStore {
   ObjectStore(chrome.DirectoryEntry root) {
     _rootDir = root;
     index = new Index(this);
+    config = new Config();
   }
 
   loadWith(chrome.DirectoryEntry objectDir, List<PackEntry> packs) {
@@ -140,7 +121,12 @@ class ObjectStore {
             return Future.forEach(packEntries, (chrome.Entry entry) {
               _readPackEntry(packDir, entry);
             }).then((_) {
-              return index.init();
+              return index.init().then((_) {
+                return readConfig().then((Config config) {
+                  this.config = config;
+                  return new Future.value();
+                });
+              });
             });
           });
         });
@@ -161,7 +147,8 @@ class ObjectStore {
   }
 
   Future<String> getHeadRef() {
-    return _rootDir.getFile(gitPath + HEAD_PATH).then((chrome.ChromeFileEntry entry) {
+    return _rootDir.getFile(gitPath + HEAD_PATH).then(
+        (chrome.ChromeFileEntry entry) {
       return entry.readBytes().then((chrome.ArrayBuffer buffer) {
         String content = UTF8.decode(buffer.getBytes());
         // get rid of the initial 'ref: ' plus newline at end.
@@ -220,7 +207,7 @@ class ObjectStore {
   Future<chrome.FileEntry> _findLooseObject(String sha) => objectDir.getFile(
       sha.substring(0, 2) + '/' + sha.substring(2));
 
-  FindPackedObjectResult findPackedObject(Uint8List shaBytes) {
+  FindPackedObjectResult findPackedObject(List<int> shaBytes) {
     for (var i = 0; i < packs.length; ++i) {
       int offset = packs[i].packIdx.getObjectOffset(shaBytes);
 
@@ -232,8 +219,9 @@ class ObjectStore {
     return throw("Not found.");
   }
 
-  Future retrieveObject(String sha, String objType) {
-    String dataType = (objType == ObjectTypes.COMMIT ? "Text" : "ArrayBuffer");
+  Future<GitObject> retrieveObject(String sha, String objType) {
+    String dataType = (objType == ObjectTypes.COMMIT_STR ? "Text"
+        : "ArrayBuffer");
     return retrieveRawObject(sha, dataType).then((object) {
       if (objType == 'Raw') {
         return object;
@@ -245,7 +233,7 @@ class ObjectStore {
     });
   }
 
-  Future retrieveRawObject(dynamic sha, String dataType) {
+  Future<GitObject> retrieveRawObject(dynamic sha, String dataType) {
     Uint8List shaBytes;
     if (sha is Uint8List) {
       shaBytes = sha;
@@ -294,7 +282,8 @@ class ObjectStore {
 
         seen[sha] = true;
 
-        return retrieveObject(sha, ObjectTypes.COMMIT).then((CommitObject commitObj) {
+        return retrieveObject(sha, ObjectTypes.COMMIT_STR).then(
+            (CommitObject commitObj) {
           nextLevel.addAll(commitObj.parents);
           int i = commits.length - 1;
           for (; i >= 0; i--) {
@@ -329,11 +318,12 @@ class ObjectStore {
   Future<CommitObject> _checkRemoteHead(GitRef remoteRef) {
     // Check if the remote head exists in the local repo.
     if (remoteRef.sha != HEAD_MASTER_SHA) {
-      return retrieveObject(remoteRef.sha, ObjectTypes.COMMIT).then((obj) => obj,
-          onError: (e) {
-            //TODO support non-fast forward.
-            _nonFastForward();
-            throw(e);
+      return retrieveObject(remoteRef.sha, ObjectTypes.COMMIT_STR).then(
+          (obj) => obj,
+        onError: (e) {
+          //TODO support non-fast forward.
+          _nonFastForward();
+          throw(e);
       });
     }
     return new Future.value();
@@ -389,7 +379,7 @@ class ObjectStore {
     var commits = [];
     Future<CommitPushEntry> getNextCommit(String sha) {
 
-      return retrieveObject(sha, ObjectTypes.COMMIT).then((
+      return retrieveObject(sha, ObjectTypes.COMMIT_STR).then((
           CommitObject commitObj) {
 
         Completer completer = new Completer();
@@ -461,8 +451,9 @@ class ObjectStore {
   }
 
   Future<TreeObject> _getTreeFromCommitSha(String sha) {
-    return retrieveObject(sha, ObjectTypes.COMMIT).then((CommitObject commit) {
-     return  retrieveObject(commit.treeSha, ObjectTypes.TREE).then(
+    return retrieveObject(sha, ObjectTypes.COMMIT_STR).then(
+        (CommitObject commit) {
+     return  retrieveObject(commit.treeSha, ObjectTypes.TREE_STR).then(
          (rawObject) => rawObject);
     });
   }
@@ -579,30 +570,19 @@ class ObjectStore {
       blobParts.add(tree.sha);
     });
 
-    return writeRawObject(ObjectTypes.TREE, new Blob(blobParts));
+    return writeRawObject(ObjectTypes.TREE_STR, new Blob(blobParts));
   }
 
-  Future<GitConfig> getConfig() {
+  Future<Config> readConfig() {
     return FileOps.readFile(_rootDir, '.git/config.json', 'Text').then(
-        (String configStr) => new GitConfig(configStr),
+        (String configStr) => new Config(configStr),
       // TODO: handle errors / build default GitConfig.
-      onError: (e) => new GitConfig());
+      onError: (e) => this.config);
   }
 
-  Future<Entry> setConfig(GitConfig config) {
-    String configStr = config.toString();
+  Future<Entry> writeConfig() {
+    String configStr = config.toJson();
     return FileOps.createFileWithContent(_rootDir, '.git/config.json',
         configStr, 'Text');
-  }
-
-  Future<Entry> updateLastChange(GitConfig config) {
-    Future<Entry> doUpdate(GitConfig config) {
-      return new Future.value();
-    }
-    if (config != null) {
-      return doUpdate(config);
-    }
-    return new Future.value();
-    //return this.getConfig().then((GitConfig config) => doUpdate(config));
   }
 }

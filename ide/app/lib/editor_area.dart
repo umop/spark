@@ -78,17 +78,33 @@ class EditorArea extends TabView {
   final EditorProvider editorProvider;
   final Map<Resource, EditorTab> _tabOfFile = {};
 
+  final Workspace _workspace;
+
   bool _allowsLabelBar = true;
 
   StreamController<String> _nameController = new StreamController.broadcast();
 
   EditorArea(Element parentElement,
-             this.editorProvider,
+             this.editorProvider, this._workspace,
              {bool allowsLabelBar: true})
       : super(parentElement) {
     onClose.listen((EditorTab tab) => closeFile(tab.file));
     this.allowsLabelBar = allowsLabelBar;
     showLabelBar = false;
+
+    _workspace.onResourceChange.listen((event) {
+      bool hasDeletes = event.changes.any(
+          (d) => d.isDelete && d.resource.isFile);
+      if (hasDeletes) {
+        _processEvent(event);
+      }
+    });
+  }
+
+  void _processEvent(ResourceChangeEvent event) {
+    event.changes
+      .where((change) => change.isDelete && change.resource.isFile)
+      .forEach((change) => closeFile(change.resource));
   }
 
   bool get shouldDisplayName => tabs.length == 1;
@@ -116,9 +132,10 @@ class EditorArea extends TabView {
   }
 
   // TabView
-  bool remove(EditorTab tab, {bool switchesTab: true}) {
-    if (super.remove(tab, switchesTab: switchesTab)) {
+  bool remove(EditorTab tab, {bool switchesTab: true, bool layoutNow: true}) {
+    if (super.remove(tab, switchesTab: switchesTab, layoutNow: layoutNow)) {
       _tabOfFile.remove(tab.file);
+      editorProvider.close(tab.file);
       showLabelBar = _allowsLabelBar && _tabOfFile.length > 1;
       return true;
     }
