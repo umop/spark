@@ -228,6 +228,7 @@ class AnalyzerServiceImpl extends ServiceImpl {
     registerRequestHandler('processContextChanges', processContextChanges);
     registerRequestHandler('disposeContext', disposeContext);
     registerRequestHandler('getOutlineFor', getOutlineFor);
+    registerRequestHandler('getCompletionsFor', getCompletionsFor);
     registerRequestHandler('getDeclarationFor', getDeclarationFor);
   }
 
@@ -309,6 +310,33 @@ class AnalyzerServiceImpl extends ServiceImpl {
       return analyzer.analyzeString(dartSdk, codeString).then((result) {
         return request.createReponse(_getOutline(result.ast).toMap());
       });
+    }
+
+    Future<ServiceActionEvent> getCompletionsFor(ServiceActionEvent request) {
+      analyzer.ProjectContext context = _contexts[request.data['contextId']];
+      String fileUuid = request.data['fileUuid'];
+      int offset = request.data['offset'];
+
+      Completions completions = _getCompletionsFor(context, fileUuid, offset);
+      return new Future.value(request.createReponse(
+          completions != null ? completions.toMap() : null));
+    }
+
+    Completions _getCompletionsFor(analyzer.ProjectContext context,
+        String fileUuid, int offset) {
+      analyzer.FileSource source = context.getSource(fileUuid);
+
+      List<analyzer.Source> librarySources =
+          context.context.getLibrariesContaining(source);
+
+      if (librarySources.isEmpty) return null;
+
+      analyzer.CompilationUnit ast =
+          context.context.resolveCompilationUnit2(source, librarySources[0]);
+
+      // TODO(ericarnold): Get completions
+
+      return new Completions(null);
     }
 
     Future<ServiceActionEvent> getDeclarationFor(ServiceActionEvent request) {

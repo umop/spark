@@ -613,6 +613,9 @@ class AceManager {
 
     String text = currentSession.value;
     outline.build(name, text);
+
+    // TODO(ericarnold): Remove and add test
+    _analysisService.getCompletionsFor(currentFile, 10);
   }
 
   void _handleMarkerChange(workspace.MarkerChangeEvent event) {

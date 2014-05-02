@@ -204,6 +204,52 @@ class Declaration {
 }
 
 /**
+ * Defines a candidate for completion of code at an offset.
+ */
+class Completion {
+  final String name;
+  final String doc;
+
+  Completion(this.name, this.doc);
+
+  factory Completion.fromMap(Map map) {
+    if (map == null || map.isEmpty) return null;
+
+    return new Completion(map["name"], map["doc"]);
+  }
+
+  Map toMap() {
+    return {
+      "name": name,
+      "doc": doc,
+    };
+  }
+
+  String toString() => '${name}';
+}
+
+/**
+ * Defines a list of [Completion] items for an offset.
+ */
+class Completions {
+  final List<Completion> items;
+
+  Completions(this.items);
+
+  factory Completions.fromMap(Map map) {
+    if (map == null || map.isEmpty) return null;
+
+    return new Completions(map['items'].map((Map item) =>
+        new Completion.fromMap(item)).toList());
+  }
+
+  Map toMap() =>
+      {"items": items.map((Completion item) => item.toMap()).toList()};
+
+  String toString() => '${items}';
+}
+
+/**
  * Defines an outline containing instances of [OutlineTopLevelEntry].
  */
 class Outline {

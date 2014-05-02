@@ -201,16 +201,16 @@ class AnalyzerService extends Service {
     });
   }
 
-  Future<Declaration> getDeclarationFor(File file, int offset) {
-    ProjectAnalyzer context = getProjectAnalyzer(file.project);
+  Future<Null> getCompletionsFor(File file, int offset) {
+    return createProjectAnalyzer(file.project).then((ProjectAnalyzer context) {
+      return context.getDeclarationFor(file, offset);
+    });
+  }
 
-    if (context == null) {
-      return createProjectAnalyzer(file.project).then((context) {
-        return context.getDeclarationFor(file, offset);
-      });
-    } else {
-      return new Future.value(context.getDeclarationFor(file, offset));
-    }
+  Future<Declaration> getDeclarationFor(File file, int offset) {
+    return createProjectAnalyzer(file.project).then((ProjectAnalyzer context) {
+      return context.getDeclarationFor(file, offset);
+    });
   }
 
   Future<ProjectAnalyzer> createProjectAnalyzer(Project project) {
@@ -291,6 +291,24 @@ class ProjectAnalyzer {
       if (event.error) throw event.getErrorMessage();
 
       return new Declaration.fromMap(event.data);
+    });
+  }
+
+  Future<Completions> getCompletionsFor(File file, int offset) {
+    analyzerService._touch(this);
+
+    PackageManager manager = analyzerService.getPackageManager();
+    PackageResolver resolver = analyzerService.getPackageResolverFor(project);
+
+    var args = {'contextId': project.uuid};
+    args['fileUuid'] = _filesToUuid(manager, resolver, [file])[0];
+    args['offset'] = offset;
+
+    return analyzerService._sendAction('getCompletionsFor', args)
+        .then((ServiceActionEvent event) {
+      if (event.error) throw event.getErrorMessage();
+
+      return new Completions.fromMap(event.data);
     });
   }
 
