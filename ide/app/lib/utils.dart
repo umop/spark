@@ -9,12 +9,18 @@ import 'dart:html' as html;
 import 'dart:typed_data' as typed_data;
 import 'dart:web_audio';
 
+import 'package:ace/ace.dart' as ace;
 import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
-import 'preferences.dart';
 
 final NumberFormat _nf = new NumberFormat.decimalPattern();
+
+final RegExp _imageFileTypes = new RegExp(r'\.(jpe?g|png|gif|ico)$',
+    caseSensitive: false);
+
+final RegExp _webFileTypes = new RegExp(r'\.(css|htm?l|xml)$',
+    caseSensitive: false);
 
 chrome.DirectoryEntry _packageDirectoryEntry;
 
@@ -60,6 +66,38 @@ String toTitleCase(String s) {
   }).join(' ');
 }
 
+/**
+ * A helper to pass as the default to [collapseDups] and [trimEnds].
+ */
+bool _identity(dynamic a, dynamic b) => a == b;
+
+/**
+ * Removes adjacent duplicates from a container. Adjacent elements a and b are
+ * considered duplicates if [test] returns true for them.
+ */
+List<dynamic> collapseDups(
+    List<dynamic> input, [bool test(dynamic a, dynamic b) = _identity]) {
+  List output = [];
+  input.forEach((elt) {
+    if (output.isEmpty || !test(elt, output.last)) {
+      output.add(elt);
+    }
+  });
+  return output;
+}
+
+/**
+ * Removes one or more values from the beginning and end of a container.
+ * A value is removed if [test] returns true for it.
+ */
+List<dynamic> trimEnds(List<dynamic> input, bool test(dynamic v)) {
+  List<dynamic> output = input.skipWhile(test);
+  while (output.isNotEmpty && test(output.last)) {
+    output.removeLast();
+  }
+  return output;
+}
+
 AudioContext _ctx;
 
 void beep() {
@@ -97,7 +135,30 @@ Future<List<int>> getAppContentsBinary(String path) {
  * the Chrome app's directory.
  */
 Future<String> getAppContents(String path) {
-  return html.HttpRequest.getString(chrome.runtime.getURL(path));
+  return html.HttpRequest.getString(chrome.runtime.getURL(path))
+      .catchError((e, s) =>
+          throw "Couldn't download $path: error code ${e.target.status}");
+}
+
+/**
+ * Returns true if the given [filename] matches common image file name patterns.
+ */
+bool isImageFilename(String filename) => _imageFileTypes.hasMatch(filename);
+
+/**
+ * Returns true if the given [filename] matches html/css/xml file types.
+ */
+bool isWebLikeFilename(String filename) => _webFileTypes.hasMatch(filename);
+
+/**
+ * Returns true if we can open the given file as text.
+ */
+bool isTextFilename(String name) {
+  int index = name.indexOf('.');
+  if (index == -1) return false;
+
+  String ext = name.substring(index + 1);
+  return ace.Mode.extensionMap.containsKey(ext);
 }
 
 /**
@@ -206,75 +267,63 @@ class PrintProfiler {
 }
 
 /**
- * Defines a preference with built in `whenLoaded` [Future] and easy access to
- * getting and setting (automatically saving as well as caching) the preference
- * `value`.
+ * A utility class to make it easier to read a stream of lists of ints. Clients
+ * of the API can instead read the data as a sequence of Futures, where they
+ * request the number of bytes to read for each future.
  */
-abstract class CachedPreference<T> {
-  Future<CachedPreference> whenLoaded;
+class StreamReader {
+  final Stream<List<int>> stream;
+  List<int> _buffer = [];
+  // `_done` is true when there's no more data available to read.
+  bool _done = false;
+  Completer _completer;
+  int _readLength;
 
-  Completer _whenLoadedCompleter = new Completer<CachedPreference>();
-  final PreferenceStore _prefStore;
-  T _currentValue;
-  String _preferenceId;
-
-  /**
-   * [prefStore] is the PreferenceStore to use and [preferenceId] is the id of
-   * the stored preference.
-   */
-  CachedPreference(this._prefStore, this._preferenceId) {
-    whenLoaded = _whenLoadedCompleter.future;
-    _retrieveValue().then((_) {
-      // If already loaded (preference has been saved before the load has
-      // finished), don't complete.
-      if (!_whenLoadedCompleter.isCompleted) {
-        _whenLoadedCompleter.complete(this);
-      }
+  StreamReader(this.stream) {
+    stream.listen((List<int> data) {
+      _buffer.addAll(data);
+      _checkListener();
+    }, onDone: () {
+      _done = true;
+      _checkListener();
     });
   }
 
-  T adaptFromString(String value);
-  String adaptToString(T value);
-
   /**
-   * The value of the preference, if loaded. If not loaded, throws an error.
+   * Return a Future which completes with the requested number of read bytes. If
+   * `length` is given as `-1`, the Future will complete with all the remaining
+   * bytes on the stream (see also, [readRemaining]).
    */
-  T get value {
-    if (!_whenLoadedCompleter.isCompleted) {
-      throw "CachedPreference value read before it was loaded";
-    }
-    return _currentValue;
+  Future<List<int>> read(int length) {
+    _readLength = length;
+    _completer = new Completer();
+    Completer c = _completer;
+    _checkListener();
+    return c.future;
   }
 
-  /**
-   * Sets and caches the value of the preference.
-   */
-  void set value(T newValue) {
-    _currentValue = newValue;
-    _prefStore.setValue(_preferenceId, adaptToString(newValue));
-
-    // If a load has not happened by this point, consider us loaded.
-    if (!_whenLoadedCompleter.isCompleted) {
-      _whenLoadedCompleter.complete(this);
-    }
+  Future<List<int>> readRemaining() {
+    return read(-1);
   }
 
-  Future _retrieveValue() => _prefStore.getValue('stripWhitespaceOnSave')
-      .then((String value) => _currentValue = adaptFromString(value));
-}
-
-/**
- * Defines a cached [bool] preference access object. Automatically saves and
- * caches for performance.
- */
-class BoolCachedPreference extends CachedPreference<bool> {
-  BoolCachedPreference(PreferenceStore prefs, String id) : super(prefs, id);
-
-  @override
-  bool adaptFromString(String value) => value == 'true';
-
-  @override
-  String adaptToString(bool value) => value ? 'true' : 'false';
+  void _checkListener() {
+    if (_completer == null) {
+      return;
+    } else if (_readLength != -1 && _buffer.length >= _readLength) {
+      List<int> result = _buffer.sublist(0, _readLength);
+      _buffer.removeRange(0, _readLength);
+      _completer.complete(result);
+      _completer = null;
+    } else if (_done && _readLength == -1) {
+      List<int> result = _buffer.sublist(0, _buffer.length);
+      _buffer.clear();
+      _completer.complete(result);
+      _completer = null;
+    } else if (_done) {
+      _completer.completeError('eof');
+      _completer = null;
+    }
+  }
 }
 
 /**
@@ -382,24 +431,28 @@ String _platform() {
 
 class FutureHelper {
   /**
-  * Perform an async operation for each element of the iterable, in turn.
-  * It refreshes the UI after each iteraton.
-  *
-  * Runs [f] for each element in [input] in order, moving to the next element
-  * only when the [Future] returned by [f] completes. Returns a [Future] that
-  * completes when all elements have been processed.
-  *
-  * The return values of all [Future]s are discarded. Any errors will cause the
-  * iteration to stop and will be piped through the returned [Future].
-  */
+   * Perform an async operation for each element of the iterable, in turn. It
+   * refreshes the UI after each iteraton.
+   *
+   * Runs [f] for each element in [input] in order, moving to the next element
+   * only when the [Future] returned by [f] completes. Returns a [Future] that
+   * completes when all elements have been processed.
+   *
+   * The return values of all [Future]s are discarded. Any errors will cause the
+   * iteration to stop and will be piped through the returned [Future].
+   */
   static Future forEachNonBlockingUI(Iterable input, Future f(element)) {
     Completer doneSignal = new Completer();
     Iterator iterator = input.iterator;
     void nextElement(_) {
       if (iterator.moveNext()) {
         nextTick().then((_) {
-          f(iterator.current)
+          try {
+            f(iterator.current)
              .then(nextElement,  onError: (e) => doneSignal.completeError(e));
+          } catch (e) {
+            doneSignal.completeError(e);
+          }
         });
       } else {
         doneSignal.complete(null);
@@ -407,5 +460,59 @@ class FutureHelper {
     }
     nextElement(null);
     return doneSignal.future;
+  }
+}
+
+/**
+ * Pretty print Json text.
+ *
+ * Usage:
+ *     String str = new JsonPrinter().print(jsonObject);
+ */
+class JsonPrinter {
+  String _in = '';
+
+  JsonPrinter();
+
+  /**
+   * Given a structured, json-like object, print it to a well-formatted, valid
+   * json string.
+   */
+  String print(dynamic json) {
+    return _print(json) + '\n';
+  }
+
+  String _print(var obj) {
+    if (obj is List) {
+      return _printList(obj);
+    } else if (obj is Map) {
+      return _printMap(obj);
+    } else if (obj is String) {
+      return '"${obj}"';
+    } else {
+      return '${obj}';
+    }
+  }
+
+  String _printList(List list) {
+    return "[${_indent()}${list.map(_print).join(',${_newLine}')}${_unIndent()}]";
+  }
+
+  String _printMap(Map map) {
+    return "{${_indent()}${map.keys.map((key) {
+      return '"${key}": ${_print(map[key])}';
+    }).join(',${_newLine}')}${_unIndent()}}";
+  }
+
+  String get _newLine => '\n${_in}';
+
+  String _indent() {
+    _in += '  ';
+    return '\n${_in}';
+  }
+
+  String _unIndent() {
+    _in = _in.substring(2);
+    return '\n${_in}';
   }
 }

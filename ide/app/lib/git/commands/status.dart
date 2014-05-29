@@ -37,6 +37,20 @@ class Status {
         return status;
       }
 
+      // Dont't track status for new and untracked files unless explicitly
+      // added.
+      if (status == null) {
+
+        status = new FileStatus();
+
+        // Ignore status of .lock files.
+        // TODO (grv) : Implement gitignore support.
+        if (entry.name.endsWith('.lock')) {
+          status.type = FileStatusType.COMMITTED;
+        }
+        return status;
+      }
+
       // TODO(grv) : check the modification time when it is available.
       return getShaForEntry(entry, 'blob').then((String sha) {
         status = new FileStatus();
@@ -75,9 +89,23 @@ class Status {
   static Future<Map<String, FileStatus>> getUntrackedChanges(ObjectStore store)
       => _getFileStatusesForTypes(store, [FileStatusType.UNTRACKED]);
 
+  static Future<List<String>> getDeletedFiles(ObjectStore store) {
+    return _getFileStatusesForTypes(store, [FileStatusType.MODIFIED], false)
+        .then(
+        (Map<String, FileStatus> statuses) {
+      List<String> deletedFilesStatus = [];
+      statuses.forEach((String filePath, FileStatus status) {
+        if (status.deleted) {
+          deletedFilesStatus.add(filePath);
+        }
+      });
+      return deletedFilesStatus;
+    });
+  }
+
   static Future<Map<String, FileStatus>> _getFileStatusesForTypes(
-      ObjectStore store, List<String> types) {
-    return store.index.updateIndex().then((_) {
+      ObjectStore store, List<String> types, [bool updateSha=true]) {
+    return store.index.updateIndex(updateSha).then((_) {
       Map result = {};
       store.index.statusMap.forEach((k, v) {
         if (types.any((type) => v.type == type)) {

@@ -7,6 +7,7 @@ library spark_polymer;
 import 'dart:async';
 import 'dart:html';
 
+import 'package:chrome/chrome_app.dart' as chrome;
 import 'package:polymer/polymer.dart' as polymer;
 import 'package:spark_widgets/spark_button/spark_button.dart';
 import 'package:spark_widgets/spark_modal/spark_modal.dart';
@@ -19,6 +20,7 @@ import 'lib/app.dart';
 import 'lib/event_bus.dart';
 import 'lib/jobs.dart';
 import 'lib/platform_info.dart';
+import 'lib/workspace.dart' as ws;
 
 class _TimeLogger {
   final _stepStopwatch = new Stopwatch()..start();
@@ -47,11 +49,18 @@ final _logger = new _TimeLogger();
 
 @polymer.initMethod
 void main() {
-  SparkFlags.initFromFile('app.json').then((_) {
+  // app.json stores global per-app flags and is overwritten by the build
+  // process (`grind deploy`).
+  // user.json can be manually added to override some of the flags from app.json
+  // or add new flags that will survive the build process.
+  final List<Future<String>> flagsReaders = [
+      HttpRequest.getString(chrome.runtime.getURL('app.json')),
+      HttpRequest.getString(chrome.runtime.getURL('user.json'))
+  ];
+  SparkFlags.initFromFiles(flagsReaders).then((_) {
     // Don't set up the zone exception handler if we're running in dev mode.
     final Function maybeRunGuarded =
-        SparkFlags.instance.developerMode ?
-            (f) => f() : createSparkZone().runGuarded;
+        SparkFlags.developerMode ? (f) => f() : createSparkZone().runGuarded;
 
     maybeRunGuarded(() {
       SparkPolymer spark = new SparkPolymer._();
@@ -62,6 +71,9 @@ void main() {
   });
 }
 
+// TODO(devoncarew): We need to de-couple a request to close the dialog
+// from actually closing it. So, cancel() => close(), and
+// performOk() => close(), but subclasses can override.
 class SparkPolymerDialog implements SparkDialog {
   SparkModal _dialogElement;
 
@@ -83,7 +95,9 @@ class SparkPolymerDialog implements SparkDialog {
   // TODO(ussuri): Currently, this never gets called (the dialog closes in
   // another way). Make symmetrical when merging Polymer and non-Polymer.
   @override
-  void hide() => _dialogElement.toggle();
+  void hide() {
+    if (_dialogElement.opened) _dialogElement.toggle();
+  }
 
   @override
   Element get element => _dialogElement;
@@ -104,6 +118,18 @@ class SparkPolymer extends Spark {
         .then((_) => super.openFile())
         .then((_) => _systemModalComplete())
         .catchError((e) => _systemModalComplete());
+  }
+
+  Future importFolder([List<ws.Resource> resources]) {
+    return _beforeSystemModal()
+        .then((_) => super.importFolder(resources))
+        .whenComplete(() => _systemModalComplete());
+  }
+
+  Future importFile([List<ws.Resource> resources]) {
+    return _beforeSystemModal()
+        .then((_) => super.importFile(resources))
+        .whenComplete(() => _systemModalComplete());
   }
 
   static set backdropShowing(bool showing) {
@@ -148,7 +174,7 @@ class SparkPolymer extends Spark {
   void initWorkspace() => super.initWorkspace();
 
   @override
-  void createEditorComponents() => super.createEditorComponents();
+  void initAceManager() => super.initAceManager();
 
   @override
   void initEditorManager() => super.initEditorManager();
@@ -158,12 +184,11 @@ class SparkPolymer extends Spark {
 
   @override
   void initSplitView() {
-    syncPrefs.getValue('splitViewPosition').then((String position) {
-      if (position != null) {
-        int value = int.parse(position, onError: (_) => 0);
-        if (value != 0) {
-          (getUIElement('#splitView') as dynamic).targetSize = value;
-        }
+    syncPrefs.getValue('splitViewPosition', '300').then((String position) {
+      int value = int.parse(position, onError: (_) => null);
+      if (value != null) {
+        _ui.splitViewPosition = value;
+        _ui.deliverChanges();
       }
     });
   }
@@ -176,6 +201,11 @@ class SparkPolymer extends Spark {
 
     // Listen for save events.
     eventBus.onEvent(BusEventType.EDITOR_MANAGER__FILES_SAVED).listen((_) {
+      statusComponent.temporaryMessage = 'All changes saved';
+    });
+    // When nothing had to be saved, show the same feedback to make the user
+    // happy.
+    eventBus.onEvent(BusEventType.EDITOR_MANAGER__NO_MODIFICATIONS).listen((_) {
       statusComponent.temporaryMessage = 'All changes saved';
     });
 
@@ -201,15 +231,9 @@ class SparkPolymer extends Spark {
   void initToolbar() {
     super.initToolbar();
 
-    _bindButtonToAction('gitClone', 'git-clone');
-    _bindButtonToAction('newProject', 'project-new');
     _bindButtonToAction('runButton', 'application-run');
-    _bindButtonToAction('pushButton', 'application-push');
     _bindButtonToAction('leftNav', 'navigate-back');
     _bindButtonToAction('rightNav', 'navigate-forward');
-
-    InputElement input = getUIElement('#search');
-    input.onInput.listen((e) => filterFilesList(input.value));
   }
 
   @override
@@ -220,6 +244,11 @@ class SparkPolymer extends Spark {
 
   @override
   Future restoreLocationManager() => super.restoreLocationManager();
+
+  @override
+  void menuActivateEventHandler(CustomEvent event) {
+    _ui.onMenuSelected(event, event.detail);
+  }
 
   //
   // - End parts of the parent's init().
@@ -234,14 +263,16 @@ class SparkPolymer extends Spark {
     SparkButton button = getUIElement('#${buttonId}');
     Action action = actionManager.getAction(actionId);
     action.onChange.listen((_) {
-      button.active = action.enabled;
+      button.disabled = !action.enabled;
+      button.deliverChanges();
     });
     button.onClick.listen((_) {
       if (action.enabled) action.invoke();
     });
-    button.active = action.enabled;
+    button.disabled = !action.enabled;
   }
 
+  @override
   void unveil() {
     super.unveil();
 
@@ -255,6 +286,11 @@ class SparkPolymer extends Spark {
         element.parent.children.remove(element);
       });
     }
+  }
+
+  @override
+  void refreshUI() {
+    _ui.refreshFromModel();
   }
 
   Future _beforeSystemModal() {

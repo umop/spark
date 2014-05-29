@@ -4,6 +4,8 @@
 
 library spark.model;
 
+import 'dart:async';
+
 import 'lib/ace.dart';
 import 'lib/actions.dart';
 import 'lib/app.dart';
@@ -24,6 +26,7 @@ abstract class SparkModel extends Application {
   AceManager get aceManager;
   ThemeManager get aceThemeManager;
   KeyBindingManager get aceKeysManager;
+  AceFontManager get aceFontManager;
   ws.Workspace get workspace;
   EditorManager get editorManager;
   EditorArea get editorArea;
@@ -41,7 +44,19 @@ abstract class SparkModel extends Application {
   void setGitSettingsResetDoneVisible(bool visible);
 
   /**
+   * Should filter files in the tree view and return the success of the
+   * operation, i.e. true if matches are found for [filter],
+   * or [filter] is null.
+   */
+  Future<bool> filterFilesList(String filter);
+
+  /**
    * Hide the splash screen; show the main UI.
    */
   void unveil();
+
+  /**
+   * Refresh the UI based on the changed model and/or flags and/or preferences.
+   */
+  void refreshUI();
 }

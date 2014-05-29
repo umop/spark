@@ -26,7 +26,9 @@ class Tab {
   DivElement _pageContainer;
 
   Tab(this.tabView, {Element page: null, bool closable: true}) {
-    _label = new DivElement()..classes.add('tabview-tablabel');
+    _label = new DivElement()
+        ..classes.add('tabview-tablabel')
+        ..tabIndex = -1;
     _label.onClick.listen((e) {
       select(forceFocus: true);
       e.stopPropagation();
@@ -38,7 +40,8 @@ class Tab {
     _closeButton = new ButtonElement()
         ..classes.add('tabview-tablabel-closebutton')
         ..classes.add('close')
-        ..type = 'button';
+        ..type = 'button'
+        ..tabIndex = -1;
     _closeButton.onClick.listen((e) {
       bool layoutNow = (this == tabView.tabs.last);
       tabView.remove(this, layoutNow: layoutNow);
@@ -46,7 +49,9 @@ class Tab {
       e.preventDefault();
     });
     _label.children.addAll([_labelCaption, _closeButton]);
-    _pageContainer = new DivElement()..classes.add('tabview-page-container');
+    _pageContainer = new DivElement()
+        ..classes.add('tabview-page-container')
+        ..tabIndex = -1;
 
     this.closable = closable;
     this.page = page;
@@ -145,8 +150,6 @@ class TabView {
   StreamSubscription<MouseEvent> _tabBarMouseLeaveStream;
 
   TabView(this.parentElement) {
-    List<Element> originalElements = parentElement.children.toList();
-
     _tabBar = new DivElement()..classes.add('tabview-tabbar');
     _tabBarScroller = new DivElement()
         ..classes.add('tabview-tabbar-scroller');
@@ -172,15 +175,7 @@ class TabView {
     _tabViewContainer = new DivElement()..classes.add('tabview-container');
     _tabViewContainer.children.addAll([_tabBar, _tabViewWorkspace]);
 
-    parentElement.children.clear();
     parentElement.children.add(_tabViewContainer);
-
-    originalElements.forEach((Element element){
-      Tab tab = add(new Tab(this, page: element));
-      if (element.attributes['data-title'] != null) {
-        tab.label = element.attributes['data-title'];
-      }
-    });
 
     window.onResize.listen((e) => _layoutTabItemsOnResize());
   }
@@ -250,7 +245,7 @@ class TabView {
   }
 
   void _layoutTabItems() {
-    int remainingWidth = _tabBarScrollable.clientWidth;
+    num remainingWidth = _tabBarScrollable.clientWidth;
     int remainingTabs = tabs.length;
     if (remainingTabs == 0) {
       // There's no tab to layout.
@@ -295,7 +290,7 @@ class TabView {
         scroller.scrollLeft = label.offsetWidth + label.offsetLeft -
             scroller.offsetWidth + scroller.offsetLeft + SCROLL_MARGIN;
       } else if (label.offsetLeft < scroller.scrollLeft + SCROLL_MARGIN) {
-        scroller.scrollLeft = label.offsetLeft - SCROLL_MARGIN;
+        scroller.scrollLeft = label.offsetLeft.toInt() - SCROLL_MARGIN;
       }
   }
 

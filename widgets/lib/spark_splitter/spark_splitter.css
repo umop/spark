@@ -3,27 +3,39 @@
 /* license that can be found in the LICENSE file. */
 
 @import url("../common/spark_widget.css");
-@import url("../../../packages/bootjack/css/bootstrap.min.css");
 
 :host {
+  background-color: #dadada;
   display: block;
-  border-left: 1px solid #DDD;
-  border-right: 1px solid #DDD;
-  cursor: col-resize;
-  background-color: #F7F7F7;
+  /* Form an independent stacking context. */
+  position: relative;
+  /* The no-op transform forms an independent stacking context. */
+  -webkit-transform: translateX(0);
 }
 
-:host(.horizontal) {
-  cursor: row-resize;
+:host([handle]:host) {
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  background-color: #f7f7f7;
 }
 
-:host(.vertical-handle) {
+:host([handle].vertical:host) {
   background: url('handle_vert.png') no-repeat center;
 }
 
-:host(.horizontal-handle) {
+:host([handle].horizontal:host) {
   background: url('handle_horiz.png') no-repeat center;
 }
 
-:host:hover, :host(.active) {
+#draggable {
+  position: absolute;
+  z-index: 1;
+}
+
+:host(.vertical:host) #draggable {
+  cursor: col-resize;
+}
+
+:host(.horizontal:host) #draggable {
+  cursor: row-resize;
 }

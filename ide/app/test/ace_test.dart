@@ -15,6 +15,7 @@ import '../lib/navigation.dart';
 import '../lib/outline.dart';
 import '../lib/workspace.dart' as workspace;
 import '../lib/ui/polymer/goto_line_view/goto_line_view.dart';
+import '../lib/preferences.dart';
 
 defineTests() {
   group('ace', () {
@@ -53,6 +54,8 @@ class MockAceManager implements AceManager {
   String get theme => null;
   Future<String> getKeyBinding() => new Future.value(null);
   void setKeyBinding(String name) { }
+  num getFontSize() => null;
+  void setFontSize(num size) { }
   void setMarkers(List<workspace.Marker> markers) { }
   void clearMarkers() { }
   void selectNextMarker() { }
@@ -60,6 +63,8 @@ class MockAceManager implements AceManager {
   void createDialog(String filename) { }
   bool isFileExtensionEditable(String extension) => false;
   void buildOutline() { }
+  Stream get onGotoDeclaration => null;
+  NavigationLocation get navigationLocation => null;
 }
 
 class MockAceEditor implements TextEditor {
@@ -74,15 +79,18 @@ class MockAceEditor implements TextEditor {
   void resize() { }
   void focus() { }
   void deactivate() { }
+  void reconcile() { }
 
+  BoolCachedPreference get stripWhitespace => null;
   bool get dirty => false;
 
   set dirty(bool value) { }
 
   Stream get onDirtyChange => null;
   Stream get onModification => null;
+  Future whenReady = null;
 
-  Future save([bool stripWhitespace = false]) => new Future.value();
+  Future save() => new Future.value();
 
   void setSession(ace.EditSession value) { }
 
@@ -94,7 +102,7 @@ class MockAceEditor implements TextEditor {
 
   void select(Span span) { }
   void format() { }
-  void navigateToDeclaration() { }
+  Future navigateToDeclaration([Duration timeLimit]) => null;
 }
 
 class MockEditSession implements EditSession {
