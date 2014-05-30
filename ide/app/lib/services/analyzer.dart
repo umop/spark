@@ -16,6 +16,7 @@ import 'package:analyzer/src/generated/parser.dart';
 import 'package:analyzer/src/generated/scanner.dart';
 import 'package:analyzer/src/generated/sdk.dart';
 import 'package:analyzer/src/generated/source.dart';
+import 'package:analysis_services/src/generated/completion.dart';
 
 export 'package:analyzer/src/generated/ast.dart';
 export 'package:analyzer/src/generated/element.dart';
@@ -61,6 +62,10 @@ Future<AnalyzerResult> analyzeString(ChromeDartSdk sdk, String contents) {
   completer.complete(result);
 
   return completer.future;
+}
+
+Future temp() {
+  
 }
 
 /**

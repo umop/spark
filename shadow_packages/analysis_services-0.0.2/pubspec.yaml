@@ -6,7 +6,7 @@ homepage: http://www.dartlang.org
 environment:
   sdk: '>=1.0.0 <2.0.0'
 dependencies:
-  analyzer:
-    path: /Users/ericarnold/src/spark/shadow_packages/analyzer-0.15.1
+  analyzer_new:
+    path: ../analyzer-0.15.1
 dev_dependencies:
   unittest: '>=0.10.0 <0.12.0'
