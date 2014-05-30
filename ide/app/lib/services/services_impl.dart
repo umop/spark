@@ -305,46 +305,39 @@ class AnalyzerServiceImpl extends ServiceImpl {
     return new Future.value(request.createReponse());
   }
 
-<<<<<<< HEAD
-    Future<ServiceActionEvent> getCompletionsFor(ServiceActionEvent request) {
-      analyzer.ProjectContext context = _contexts[request.data['contextId']];
-      String fileUuid = request.data['fileUuid'];
-      int offset = request.data['offset'];
+  Future<ServiceActionEvent> getCompletionsFor(ServiceActionEvent request) {
+    analyzer.ProjectContext context = _contexts[request.data['contextId']];
+    String fileUuid = request.data['fileUuid'];
+    int offset = request.data['offset'];
 
-      Completions completions = _getCompletionsFor(context, fileUuid, offset);
-      return new Future.value(request.createReponse(
-          completions != null ? completions.toMap() : null));
-    }
+    Completions completions = _getCompletionsFor(context, fileUuid, offset);
+    return new Future.value(request.createReponse(
+        completions != null ? completions.toMap() : null));
+  }
 
-    Completions _getCompletionsFor(analyzer.ProjectContext context,
-        String fileUuid, int offset) {
-      analyzer.FileSource source = context.getSource(fileUuid);
+  Completions _getCompletionsFor(analyzer.ProjectContext context,
+      String fileUuid, int offset) {
+    analyzer.FileSource source = context.getSource(fileUuid);
 
-      List<analyzer.Source> librarySources =
-          context.context.getLibrariesContaining(source);
+    List<analyzer.Source> librarySources =
+        context.context.getLibrariesContaining(source);
 
-      if (librarySources.isEmpty) return null;
+    if (librarySources.isEmpty) return null;
 
-      analyzer.CompilationUnit ast =
-          context.context.resolveCompilationUnit2(source, librarySources[0]);
+    analyzer.CompilationUnit ast =
+        context.context.resolveCompilationUnit2(source, librarySources[0]);
 
-      // TODO(ericarnold): Get completions
+    // TODO(ericarnold): Get completions
 
-      return new Completions(null);
-    }
+    return new Completions(null);
+  }
 
-    Future<ServiceActionEvent> getDeclarationFor(ServiceActionEvent request) {
-      analyzer.ProjectContext context = _contexts[request.data['contextId']];
-      String fileUuid = request.data['fileUuid'];
-      int offset = request.data['offset'];
-=======
   Future<ServiceActionEvent> getOutlineFor(ServiceActionEvent request) {
     var codeString = request.data['string'];
     return analyzer.analyzeString(dartSdk, codeString).then((result) {
       return request.createReponse(_getOutline(result.ast).toMap());
     });
   }
->>>>>>> ae3d3f73c88cebcbbad6f11ea0c2c0d6d946479d
 
   Future<ServiceActionEvent> getDeclarationFor(ServiceActionEvent request) {
     analyzer.ProjectContext context = _contexts[request.data['contextId']];
